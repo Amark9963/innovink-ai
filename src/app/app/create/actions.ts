@@ -433,7 +433,7 @@ export async function sendCreateAgentMessageAction(formData: FormData) {
   });
 
   try {
-    const briefDraft = await generateProgramBriefDraft({
+    const briefDraft = await generateProgramBriefDraft(supabase, {
       workspaceName: selectedWorkspace.workspaceName,
       organizationName: selectedWorkspace.organizationName,
       currentBrief:
@@ -682,7 +682,7 @@ export async function generateProgramPlanAction(formData: FormData) {
   });
 
   try {
-    const planDraft = await generateProgramPlanDraft({
+    const planDraft = await generateProgramPlanDraft(supabase, {
       workspaceName: selectedWorkspace.workspaceName,
       organizationName: selectedWorkspace.organizationName,
       briefTitle,
