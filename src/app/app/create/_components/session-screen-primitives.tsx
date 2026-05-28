@@ -104,7 +104,7 @@ export function SessionTabs({
   data,
 }: {
   sessionId: string;
-  active: "chat" | "brief" | "plan" | "approvals" | "execution";
+  active: "chat" | "brief" | "plan" | "assets" | "approvals" | "execution";
   data: AgentCreateWorkspaceData;
 }) {
   const latestApproval = data.approvals[0] ?? null;
@@ -122,6 +122,12 @@ export function SessionTabs({
       href: `/app/create/${sessionId}/plan`,
       key: "plan" as const,
       badge: data.plan ? "ok" : null,
+    },
+    {
+      label: "Assets",
+      href: `/app/create/${sessionId}/assets`,
+      key: "assets" as const,
+      count: data.planItems.length || null,
     },
     {
       label: "Approvals",

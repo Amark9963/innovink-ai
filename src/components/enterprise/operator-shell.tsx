@@ -18,6 +18,7 @@ type OperatorShellProps = {
     | "ai-workspace"
     | "program-brief"
     | "execution-plan"
+    | "draft-assets"
     | "approvals"
     | "execution";
   brandTier?: string;
@@ -138,6 +139,12 @@ export function OperatorShell({
           href={sessionId ? `/app/create/${sessionId}/plan` : "/app/create"}
           isActive={activeNav === "execution-plan"}
           label="Execution Plan"
+          disabled={!sessionId}
+        />
+        <ShellNavLink
+          href={sessionId ? `/app/create/${sessionId}/assets` : "/app/create"}
+          isActive={activeNav === "draft-assets"}
+          label="Draft Assets"
           disabled={!sessionId}
         />
         {programSetupNavOnly ? null : (

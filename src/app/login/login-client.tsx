@@ -13,7 +13,7 @@ const PRIMARY_LABELS: Record<AuthMode, string> = {
   "magic-link": "Send magic link",
 };
 
-export function LoginClient() {
+export function LoginClient({ nextPath }: { nextPath: string }) {
   const router = useRouter();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [mode, setMode] = useState<AuthMode>("sign-in");
@@ -40,7 +40,7 @@ export function LoginClient() {
         const { error } = await supabase.auth.signInWithOtp({
           email,
           options: {
-            emailRedirectTo: `${window.location.origin}/auth/callback?next=/app`,
+            emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`,
           },
         });
 
@@ -66,7 +66,7 @@ export function LoginClient() {
             data: {
               full_name: fullName || undefined,
             },
-            emailRedirectTo: `${window.location.origin}/auth/callback?next=/app`,
+            emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`,
           },
         });
 
@@ -89,7 +89,7 @@ export function LoginClient() {
         return;
       }
 
-      router.push("/app");
+      router.push(nextPath);
       router.refresh();
     });
   }

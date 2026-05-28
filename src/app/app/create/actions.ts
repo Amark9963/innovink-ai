@@ -24,17 +24,20 @@ const sendMessageSchema = z.object({
 
 const sessionOnlySchema = z.object({
   sessionId: z.uuid(),
+  redirectTo: z.enum(["create", "plan", "approvals"]).optional(),
 });
 
 const approvalDecisionSchema = z.object({
   sessionId: z.uuid(),
   approvalRequestId: z.uuid(),
   decision: z.enum(["approved", "rejected"]),
+  redirectTo: z.enum(["create", "approvals", "execution"]).optional(),
 });
 
 const executeSchema = z.object({
   sessionId: z.uuid(),
   approvalRequestId: z.uuid(),
+  redirectTo: z.enum(["create", "execution"]).optional(),
 });
 
 function buildCreateRoute({
@@ -602,6 +605,7 @@ export async function sendCreateAgentMessageAction(formData: FormData) {
 export async function generateProgramPlanAction(formData: FormData) {
   const parsed = sessionOnlySchema.safeParse({
     sessionId: formData.get("sessionId"),
+    redirectTo: formData.get("redirectTo") || undefined,
   });
 
   if (!parsed.success) {
@@ -798,6 +802,10 @@ export async function generateProgramPlanAction(formData: FormData) {
     });
 
     revalidatePath("/app/create");
+    if (parsed.data.redirectTo === "plan") {
+      redirect(`/app/create/${session.id}/plan`);
+    }
+
     redirect(
       buildCreateRoute({
         sessionId: session.id,
@@ -841,6 +849,7 @@ export async function generateProgramPlanAction(formData: FormData) {
 export async function prepareApprovalRequestAction(formData: FormData) {
   const parsed = sessionOnlySchema.safeParse({
     sessionId: formData.get("sessionId"),
+    redirectTo: formData.get("redirectTo") || undefined,
   });
 
   if (!parsed.success) {
@@ -1012,6 +1021,10 @@ export async function prepareApprovalRequestAction(formData: FormData) {
     .eq("id", session.id);
 
   revalidatePath("/app/create");
+  if (parsed.data.redirectTo === "approvals") {
+    redirect(`/app/create/${session.id}/approvals`);
+  }
+
   redirect(
     buildCreateRoute({
       sessionId: session.id,
@@ -1026,6 +1039,7 @@ export async function reviewApprovalRequestAction(formData: FormData) {
     sessionId: formData.get("sessionId"),
     approvalRequestId: formData.get("approvalRequestId"),
     decision: formData.get("decision"),
+    redirectTo: formData.get("redirectTo") || undefined,
   });
 
   if (!parsed.success) {
@@ -1146,6 +1160,14 @@ export async function reviewApprovalRequestAction(formData: FormData) {
     .eq("id", session.id);
 
   revalidatePath("/app/create");
+  if (parsed.data.redirectTo === "approvals") {
+    redirect(`/app/create/${session.id}/approvals?approval=${approvalRequest.id}`);
+  }
+
+  if (parsed.data.redirectTo === "execution" && parsed.data.decision === "approved") {
+    redirect(`/app/create/${session.id}/execution`);
+  }
+
   redirect(
     buildCreateRoute({
       sessionId: session.id,
@@ -1162,6 +1184,7 @@ export async function executeApprovedPlanAction(formData: FormData) {
   const parsed = executeSchema.safeParse({
     sessionId: formData.get("sessionId"),
     approvalRequestId: formData.get("approvalRequestId"),
+    redirectTo: formData.get("redirectTo") || undefined,
   });
 
   if (!parsed.success) {
@@ -1537,6 +1560,10 @@ export async function executeApprovedPlanAction(formData: FormData) {
     });
 
     revalidatePath("/app/create");
+    if (parsed.data.redirectTo === "execution") {
+      redirect(`/app/create/${session.id}/execution`);
+    }
+
     redirect(
       buildCreateRoute({
         sessionId: session.id,

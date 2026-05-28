@@ -3,11 +3,23 @@ import { LoginClient } from "@/app/login/login-client";
 import { getCurrentUserOrNull, hasWorkspaceAccess } from "@/lib/supabase/queries";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-export default async function LoginPage() {
+type LoginPageProps = {
+  searchParams?: Promise<{
+    next?: string;
+  }>;
+};
+
+export default async function LoginPage({ searchParams }: LoginPageProps) {
+  const query = (await searchParams) ?? {};
+  const nextPath = typeof query.next === "string" && query.next.startsWith("/") ? query.next : null;
   const supabase = await createSupabaseServerClient();
   const user = await getCurrentUserOrNull(supabase);
 
   if (user) {
+    if (nextPath) {
+      redirect(nextPath);
+    }
+
     const hasWorkspace = await hasWorkspaceAccess(supabase, user);
     redirect(hasWorkspace ? "/app/dashboard" : "/app/onboarding");
   }
@@ -18,7 +30,7 @@ export default async function LoginPage() {
       <div className="pointer-events-none fixed bottom-[-150px] left-[-100px] h-[420px] w-[420px] rounded-full bg-[radial-gradient(circle,rgba(58,110,158,0.04),transparent_65%)]" />
 
       <div className="relative z-10 w-full max-w-[424px]">
-        <LoginClient />
+        <LoginClient nextPath={nextPath ?? "/app"} />
         <div className="mt-5 text-center text-[11.5px] text-[#5e7088]">
           Powered by <span className="font-medium text-[#ccaa4a]">Innovink</span> Enterprise ·{" "}
           <span>Privacy Policy</span> · <span>Terms of Service</span>

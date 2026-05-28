@@ -1,0 +1,35 @@
+.page{min-height:100vh;background:#07111f;color:#eae5dc;padding:24px}
+.shell{max-width:1360px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+.hero,.card,.metric{background:linear-gradient(180deg,rgba(16,27,43,.96),rgba(10,18,31,.96));border:1px solid rgba(166,185,208,.12);border-radius:20px;box-shadow:0 28px 80px rgba(0,0,0,.24)}
+.hero{padding:24px;display:flex;justify-content:space-between;gap:18px;align-items:flex-start}
+.title{font-size:30px;font-weight:700;letter-spacing:-.03em}
+.sub{margin-top:10px;color:#9fb0c4;font-size:13px;line-height:1.7;max-width:760px}
+.actions{display:flex;gap:10px;flex-wrap:wrap}
+.button,.ghostButton,.dangerButton{display:inline-flex;align-items:center;justify-content:center;border-radius:12px;padding:10px 14px;font-size:12px;font-weight:600;text-decoration:none;cursor:pointer;border:1px solid transparent}
+.button{background:#b89334;color:#08111f}
+.ghostButton{background:rgba(255,255,255,.02);color:#eae5dc;border-color:rgba(166,185,208,.16)}
+.dangerButton{background:rgba(190,79,79,.12);color:#ffb0b0;border-color:rgba(190,79,79,.24)}
+.metrics{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}
+.metric{padding:16px}
+.metricLabel{color:#8b9bb0;font-size:11px;text-transform:uppercase;letter-spacing:.08em}
+.metricValue{margin-top:8px;font-size:24px;font-weight:700}
+.grid{display:grid;grid-template-columns:1.2fr .8fr;gap:16px}
+.card{padding:18px}
+.cardTitle{font-size:15px;font-weight:700}
+.cardSub{margin-top:4px;color:#8b9bb0;font-size:12px}
+.stack{display:flex;flex-direction:column;gap:12px;margin-top:16px}
+.row{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;padding:12px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+.row:last-child{border-bottom:none}
+.meta{color:#8b9bb0;font-size:11px;margin-top:4px;line-height:1.6}
+.pill,.pillWarn,.pillDanger,.pillSuccess{display:inline-flex;align-items:center;border-radius:999px;padding:5px 10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}
+.pill{background:rgba(166,185,208,.12);color:#c6d1df}
+.pillWarn{background:rgba(176,138,40,.12);color:#f7d47d}
+.pillDanger{background:rgba(190,79,79,.12);color:#ffb0b0}
+.pillSuccess{background:rgba(59,133,97,.16);color:#9de0b6}
+.table{display:flex;flex-direction:column;gap:10px;margin-top:16px}
+.tableRow{display:grid;grid-template-columns:1.2fr .8fr .7fr .7fr .7fr auto;gap:12px;align-items:center;padding:12px 14px;border-radius:14px;border:1px solid rgba(166,185,208,.08);background:rgba(255,255,255,.02)}
+.tableHead{color:#8b9bb0;font-size:10px;text-transform:uppercase;letter-spacing:.08em}
+.notice{border-radius:16px;padding:14px;background:rgba(176,138,40,.08);border:1px solid rgba(176,138,40,.22);color:#f3dcc4;font-size:12px;line-height:1.7}
+.empty{border-radius:16px;border:1px dashed rgba(166,185,208,.16);padding:18px;color:#8b9bb0;font-size:12px;line-height:1.7}
+@media (max-width:1180px){.metrics{grid-template-columns:repeat(3,minmax(0,1fr))}.grid{grid-template-columns:1fr}.tableRow{grid-template-columns:1fr}}
+@media (max-width:720px){.page{padding:16px}.hero{padding:18px;flex-direction:column}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}

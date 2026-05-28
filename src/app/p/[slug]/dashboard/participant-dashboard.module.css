@@ -1,0 +1,68 @@
+.page{min-height:100vh;background:#f4f0e8;color:#1a2438}
+.header{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;height:56px;padding:0 24px;background:#fdfaf6;border-bottom:1px solid rgba(0,0,0,.07)}
+.headerBrandRow{display:flex;align-items:center;gap:10px}
+.brandMark{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:999px;background:rgba(176,138,40,.15);border:1px solid rgba(176,138,40,.3);font-size:11px;font-weight:700;color:#b08a28}
+.brandName{font-size:13px;font-weight:700;color:#1a2438}
+.headerDivider{width:1px;height:18px;background:rgba(0,0,0,.07);margin:0 8px}
+.headerProgram{font-size:13px;font-weight:500;color:#1a2438}
+.headerIdentity{display:flex;align-items:center;gap:12px}
+.teamChip{display:flex;align-items:center;gap:6px}
+.teamChipAvatar,.userAvatar{display:flex;align-items:center;justify-content:center;border-radius:999px;font-size:11px;font-weight:600}
+.teamChipAvatar{width:24px;height:24px;background:rgba(176,138,40,.15);border:1px solid rgba(176,138,40,.3);color:#b08a28}
+.teamChipLabel{font-size:12px;font-weight:500;color:#1a2438}
+.userAvatar{width:28px;height:28px;background:rgba(58,110,158,.15);border:1px solid rgba(58,110,158,.3);color:#3a6e9e}
+.content{max-width:960px;margin:0 auto;padding:28px 24px}
+.statusBanner{margin-bottom:16px;padding:12px 14px;border-radius:10px;background:rgba(45,122,88,.08);border:1px solid rgba(45,122,88,.18);color:#2d7a58;font-size:12px}
+.timelineCard,.card{background:#fdfaf6;border:1px solid rgba(0,0,0,.07);border-radius:16px}
+.timelineCard{padding:20px 28px;margin-bottom:20px}
+.sectionEyebrow{margin-bottom:16px;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#9aaac0}
+.timelineSteps{display:flex;align-items:flex-start}
+.phaseStep{display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;position:relative;text-align:center}
+.phaseStep::after{content:"";position:absolute;top:12px;left:calc(50% + 14px);right:calc(-50% + 14px);height:1.5px;background:rgba(0,0,0,.10)}
+.phaseStep:last-child::after{display:none}
+.phaseDot{display:flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:999px;background:#fdfaf6;border:2px solid rgba(0,0,0,.10);font-size:9px;font-weight:700;color:#9aaac0;z-index:1}
+.phaseDotDone{background:#2d7a58;border-color:#4aaa80;color:#fff}
+.phaseDotActive{background:#b08a28;border-color:#ccaa4a;color:#07101f}
+.phaseLabel,.phaseDate{font-size:10.5px}
+.phaseLabelDone{color:#2d7a58;font-weight:500}
+.phaseLabelActive{color:#ccaa4a;font-weight:600}
+.phaseLabelMuted{color:#9aaac0}
+.phaseDate{color:#9aaac0;font-size:9.5px}
+.grid{display:grid;grid-template-columns:1.4fr 1fr;gap:16px;margin-bottom:20px}
+.card{padding:20px;margin-bottom:20px}
+.submissionCard{background:#fdf9f2;border-color:#e8d8a0}
+.cardHeader{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
+.cardTitle{font-size:16px;font-weight:700;color:#1a2438}
+.cardSub{font-size:12px;color:#6a7a90}
+.activeBadge,.progressBadge{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;font-size:11px;font-weight:600}
+.activeBadge{background:#e8f4ee;color:#2d7a58;border:1px solid #b8dfc8}
+.progressBadge{background:#f0ece6;color:#b08a28;border:1px solid #e5e0d5}
+.memberWrap{display:flex;flex-wrap:wrap;gap:6px}
+.memberChip{display:flex;align-items:center;gap:6px;padding:6px 10px;background:#f8f4ee;border:1px solid rgba(0,0,0,.07);border-radius:14px}
+.memberAvatar{display:flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:999px;background:rgba(176,138,40,.15);color:#b08a28;font-size:10px;font-weight:700}
+.memberName{font-size:12px;font-weight:500;color:#1a2438}
+.memberRole{font-size:10px;color:#9aaac0}
+.emptyText{font-size:12px;color:#6a7a90;line-height:1.7}
+.progressMeta{display:flex;justify-content:space-between;margin-bottom:5px;font-size:11.5px;color:#3a4a60}
+.progressBar{height:8px;background:#e5e0d5;border-radius:999px;overflow:hidden;margin-bottom:12px}
+.progressFill{height:100%;background:#b08a28;border-radius:999px}
+.deadlineNote{margin-bottom:12px;padding:8px 10px;background:rgba(176,138,40,.12);border:1px solid rgba(176,138,40,.18);border-radius:8px;font-size:11.5px;color:#9d6f12}
+.primaryButton{display:inline-flex;align-items:center;justify-content:center;width:100%;padding:12px;border:none;border-radius:6px;background:#b08a28;color:#fff;text-decoration:none;font-size:13px;font-weight:600;transition:background-color .14s,box-shadow .14s}
+.primaryButton:hover{background:#c9a840;box-shadow:0 4px 16px rgba(176,138,40,.3)}
+.resourcesBlock{margin-bottom:20px}
+.resourcesTitle{margin-bottom:12px;font-size:13px;font-weight:600;color:#1a2438}
+.resourceGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.resourceCard{display:block;padding:16px;background:#f8f4ee;border:1px solid rgba(0,0,0,.07);border-radius:16px;text-decoration:none;transition:border-color .14s,background-color .14s,transform .14s}
+.resourceCard:hover{border-color:rgba(0,0,0,.10);background:#fff;transform:translateY(-1px)}
+.resourceIcon{margin-bottom:10px;color:#b08a28;font-size:18px}
+.resourceCardTitle{margin-bottom:3px;font-size:13px;font-weight:600;color:#1a2438}
+.resourceCardBody{font-size:11.5px;color:#6a7a90}
+.resourceAction{margin-top:10px;font-size:11px;font-weight:600;color:#3a6e9e}
+.timelineList{display:flex;flex-direction:column;gap:14px}
+.timelineItem{display:flex;gap:12px}
+.timelineMarker{width:10px;height:10px;border-radius:999px;flex-shrink:0;margin-top:5px}
+.timelineMarkerActive{background:#b08a28}
+.timelineMarkerUpcoming{background:#d0cab0}
+.timelineItemTitle{font-size:13px;font-weight:600;color:#1a2438}
+.timelineItemMeta{font-size:11px;color:#6a7a90;margin-top:2px}
+@media (max-width: 900px){.grid,.resourceGrid{grid-template-columns:1fr}.timelineSteps{overflow-x:auto;gap:18px}.phaseStep{min-width:110px}.phaseStep::after{display:none}}

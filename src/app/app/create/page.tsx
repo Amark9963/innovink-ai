@@ -21,6 +21,7 @@ type CreatePageProps = {
     workspace?: string;
     status?: string;
     error?: string;
+    prompt?: string;
   }>;
 };
 
@@ -353,6 +354,11 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
               {statusCopy[params.status]}
             </div>
           ) : null}
+          {params.prompt ? (
+            <div className="mx-auto mb-5 max-w-[580px] rounded-lg border border-[#b08a2838] bg-[#b08a2810] px-4 py-3 text-[12px] text-[#e4d8b4]">
+              Innova loaded a follow-up prompt from the review workspace. You can edit it before sending.
+            </div>
+          ) : null}
 
           <div className="mx-auto mb-7 max-w-[580px]">
             <div className="mb-3 text-center text-[11px] font-semibold uppercase tracking-[0.1em] text-[#5e7088]">
@@ -485,6 +491,7 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
               <div className="flex items-end gap-2 rounded-xl border border-white/10 bg-[#0a1422] px-4 py-3">
                 <textarea
                   name="message"
+                  defaultValue={params.prompt ?? ""}
                   required
                   minLength={8}
                   rows={4}

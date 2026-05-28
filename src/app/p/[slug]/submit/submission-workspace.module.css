@@ -1,0 +1,88 @@
+.page{min-height:100vh;background:#f8f6f1;color:#1a1a1a}
+.header{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:56px;background:#07101f;border-bottom:1px solid rgba(255,255,255,.08)}
+.headerBrand{display:flex;align-items:center;gap:12px}
+.headerBrandMark{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:999px;background:rgba(176,138,40,.15);border:1px solid rgba(176,138,40,.3);font-size:11px;font-weight:700;color:#ccaa4a}
+.headerBrandDivider{width:1px;height:18px;background:rgba(255,255,255,.1)}
+.headerBrandName{font-size:12px;font-weight:700;letter-spacing:.05em;color:#ccaa4a;text-transform:uppercase}
+.headerProgram{font-size:12px;color:#9baabf}
+.headerIdentity{display:flex;align-items:center;gap:12px}
+.headerLink{font-size:12px;color:#9baabf;text-decoration:none}
+.headerLink:hover{color:#fff}
+.headerAvatar{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:999px;background:rgba(176,138,40,.15);border:1px solid rgba(176,138,40,.3);font-size:11px;font-weight:700;color:#ccaa4a}
+.deadlineBanner{display:flex;align-items:center;justify-content:center;gap:10px;padding:10px 24px;background:#b08a28}
+.deadlineTitle,.deadlineValue{font-size:12px;color:#07101f}
+.deadlineTitle{font-weight:600}
+.deadlineValue{font-weight:700}
+.shell{display:grid;grid-template-columns:260px 1fr;max-width:1200px;margin:0 auto;padding:32px 24px;gap:24px}
+.sidebar{position:sticky;top:88px;height:fit-content}
+.sidebarCard,.card,.tipCard{background:#fff;border:1px solid #e5e0d5;border-radius:12px}
+.sidebarCard{padding:20px;margin-bottom:16px}
+.sidebarTitle{font-size:13px;font-weight:700;color:#1a1a1a;margin-bottom:4px}
+.sidebarSubtitle{font-size:11px;color:#666;margin-bottom:16px}
+.progressMeta{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;font-size:11px;color:#666}
+.progressBar{height:6px;background:#e5e0d5;border-radius:999px;overflow:hidden;margin-bottom:16px}
+.progressFill{height:100%;background:#b08a28;border-radius:999px}
+.statusList{display:flex;flex-direction:column;gap:8px}
+.statusRow{display:flex;align-items:center;gap:8px;font-size:12px}
+.statusIcon{display:flex;align-items:center;justify-content:center;width:12px;height:12px;border-radius:999px;flex-shrink:0}
+.statusIconDone{background:#2d7a58;color:#fff;font-size:10px}
+.statusIconProgress{border:1.5px solid #b08a28;color:#b08a28;font-size:10px}
+.statusIconTodo{border:1.5px solid #d0cab0}
+.statusLabelDone{color:#2d7a58}
+.statusLabelProgress{color:#b08a28;font-weight:500}
+.statusLabelTodo{color:#888}
+.sidebarSectionTitle{font-size:12px;font-weight:700;color:#1a1a1a;margin-bottom:12px}
+.teamList{display:flex;flex-direction:column;gap:8px}
+.teamMember{display:flex;align-items:center;gap:8px}
+.teamAvatar{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:999px;background:rgba(176,138,40,.12);border:1px solid rgba(176,138,40,.3);font-size:11px;font-weight:700;color:#b08a28}
+.teamName{font-size:12px;font-weight:500;color:#1a1a1a}
+.teamRole{font-size:10.5px;color:#888}
+.supportCard{background:#fdf9f2;border-color:#e8d8a0}
+.supportBody{font-size:11.5px;line-height:1.7;color:#555;margin-bottom:14px}
+.supportButton{display:inline-flex;align-items:center;justify-content:center;width:100%;padding:9px 12px;background:#b08a28;color:#fff;text-decoration:none;border-radius:6px;font-size:12px;font-weight:600}
+.main{min-width:0}
+.mainHeader{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:24px}
+.mainTitle{font-size:20px;font-weight:700;color:#1a1a1a;margin-bottom:4px}
+.mainSubtitle{font-size:13px;color:#666}
+.headerActions{display:flex;align-items:center;gap:12px}
+.autosaveRow{display:flex;align-items:center;gap:6px;font-size:11px;color:#888}
+.autosaveDot{width:6px;height:6px;border-radius:999px;background:#2d7a58}
+.topSubmitButton,.primaryButton,.secondaryButton{display:inline-flex;align-items:center;justify-content:center;border-radius:6px;font-size:13px;font-weight:600;text-decoration:none;cursor:pointer;transition:all .14s}
+.topSubmitButton,.primaryButton{background:#b08a28;color:#fff;border:none}
+.topSubmitButton{padding:8px 16px}
+.topSubmitButton:hover,.primaryButton:hover{background:#c29a31}
+.successBanner,.errorBanner{padding:12px 14px;border-radius:10px;font-size:12px;margin-bottom:14px}
+.successBanner{background:#e8f4ee;border:1px solid #b8dfc8;color:#2d7a58}
+.errorBanner{background:#fbefed;border:1px solid #e3b5ab;color:#a64632}
+.tipCard{display:flex;align-items:flex-start;gap:10px;padding:14px;background:#fdf9f2;border-color:#e8d8a0;margin-bottom:16px}
+.tipMark{display:flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:6px;background:rgba(176,138,40,.15);border:1px solid rgba(176,138,40,.3);font-size:10px;font-weight:700;color:#b08a28;flex-shrink:0}
+.tipBody{font-size:12px;line-height:1.7;color:#555}
+.form{display:flex;flex-direction:column;gap:16px}
+.card{padding:20px}
+.cardHeader{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+.cardTitle{font-size:14px;font-weight:700;color:#1a1a1a}
+.statusPill{display:inline-flex;align-items:center;padding:6px 14px;border-radius:999px;border:1px solid #e5e0d5;background:#f0ece6;color:#888;font-size:12px}
+.statusPillComplete{background:#e8f4ee;border-color:#b8dfc8;color:#2d7a58}
+.statusPillProgress{background:#fdf9f2;border-color:#e8d8a0;color:#b08a28}
+.fieldBlock{margin-bottom:20px}
+.fieldBlock:last-child{margin-bottom:0}
+.label{display:block;font-size:11.5px;font-weight:600;color:#444;margin-bottom:6px}
+.required{margin-left:4px;color:#c0392b}
+.input,.select,.textarea{width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e0dbd0;border-radius:6px;background:#fff;font-size:13px;color:#1a1a1a;outline:none;transition:border-color .12s,box-shadow .12s}
+.input:focus,.select:focus,.textarea:focus{border-color:#b08a28;box-shadow:0 0 0 3px rgba(176,138,40,.08)}
+.textarea{min-height:120px;resize:vertical}
+.helpText{margin-top:6px;font-size:11px;color:#888;line-height:1.6}
+.checkboxList{display:grid;gap:8px}
+.checkboxRow{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:#444}
+.checkboxRow input{margin-top:2px}
+.inlineSectionHeader{font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#9d6f12;margin:6px 0 12px}
+.uploadZone{border:1.5px dashed #d0cab0;border-radius:10px;padding:22px;background:#fdfcf9}
+.uploadEmoji{font-size:24px;margin-bottom:8px}
+.uploadTitle{font-size:13px;font-weight:600;color:#444;margin-bottom:4px}
+.uploadBody{font-size:11px;color:#888;line-height:1.6;margin-bottom:12px}
+.footerActions{display:flex;gap:10px;margin-top:4px}
+.secondaryButton{padding:12px 14px;background:#fff;color:#b08a28;border:1.5px solid #e5e0d5}
+.secondaryButton:hover{border-color:#d0cab0;background:#fdf9f2}
+.primaryButton{flex:2;padding:12px 14px}
+.footerActions .secondaryButton{flex:1}
+@media (max-width: 980px){.shell{grid-template-columns:1fr}.sidebar{position:static}.mainHeader,.headerActions,.footerActions{flex-direction:column;align-items:stretch}.topSubmitButton,.primaryButton,.secondaryButton{width:100%}}

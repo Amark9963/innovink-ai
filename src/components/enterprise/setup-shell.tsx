@@ -19,8 +19,10 @@ export function SetupShell({
   preview,
   children,
 }: SetupShellProps) {
+  const activeCount = steps.filter((step) => step.status === "done").length + 1;
+
   return (
-    <div className="grid min-h-screen grid-rows-[56px_1fr] grid-cols-[220px_minmax(0,1fr)_300px] [grid-template-areas:'hdr_hdr_hdr''steps_content_preview'] bg-[#07101f] text-[#eae5dc]">
+    <div className="grid min-h-screen grid-cols-[220px_minmax(0,1fr)_300px] grid-rows-[56px_1fr] [grid-template-areas:'hdr_hdr_hdr''steps_content_preview'] bg-[#07101f] text-[#eae5dc]">
       <header className="[grid-area:hdr] flex items-center border-b border-white/7 bg-[#0c1525]">
         <div className="flex h-full w-[220px] items-center gap-3 border-r border-white/7 px-4">
           <div className="flex h-8 w-8 items-center justify-center rounded-md border border-[#b08a2838] bg-[#b08a281a] text-[13px] font-bold tracking-tight text-[#ccaa4a]">
@@ -35,10 +37,33 @@ export function SetupShell({
             </div>
           </div>
         </div>
+
         <div className="flex flex-1 items-center gap-3 px-5">
           <div className="text-[13px] font-medium text-[#eae5dc]">Workspace Setup</div>
           <div className="h-[18px] w-px bg-white/7" />
-          <div className="text-[12px] text-[#5e7088]">{progressLabel}</div>
+          <div className="text-[12px] text-[#5e7088]">Configure your Innovink workspace</div>
+        </div>
+
+        <div className="flex items-center gap-3 px-5">
+          <div className="flex items-center gap-[6px]">
+            {steps.map((step, index) => (
+              <div
+                key={`${step.label}-${index}`}
+                className={`h-[5px] w-[5px] rounded-full ${
+                  step.status === "done" || step.status === "active" ? "bg-[#b08a28]" : "bg-white/15"
+                } ${step.status === "active" ? "shadow-[0_0_6px_rgba(176,138,40,0.8)]" : ""}`}
+              />
+            ))}
+          </div>
+          <div className="text-[11px] text-[#9baabf]">
+            {progressLabel || `Step ${activeCount} of ${steps.length}`}
+          </div>
+          <button
+            type="button"
+            className="rounded-md px-3 py-1.5 text-[11px] text-[#5e7088] transition hover:bg-white/[0.04] hover:text-[#9baabf]"
+          >
+            Skip for now
+          </button>
         </div>
       </header>
 

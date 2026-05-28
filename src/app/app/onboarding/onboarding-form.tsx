@@ -22,90 +22,103 @@ export function OnboardingForm() {
   const [workspaceSlug, setWorkspaceSlug] = useState("");
 
   return (
-    <section className="max-w-4xl rounded-xl border border-white/7 bg-[#162034] p-6 shadow-[0_8px_28px_rgba(0,0,0,0.55)] md:p-7">
+    <section className="max-w-4xl rounded-[18px] border border-white/7 bg-[#162034] p-6 shadow-[0_8px_28px_rgba(0,0,0,0.55)] md:p-7">
       <form action={formAction} className="space-y-6">
+        <div className="rounded-xl border border-[#b08a2838] bg-[#b08a2810] px-4 py-3 text-[12px] leading-5 text-[#cbb890]">
+          This creates your first organization, workspace, and owner-level membership in one audited setup step.
+        </div>
+
         <div className="grid gap-4 md:grid-cols-2">
-        <div className="space-y-2">
-          <label
-            htmlFor="organizationName"
-            className="text-[11px] font-medium uppercase tracking-[0.06em] text-[#9baabf]"
-          >
-            Organization name
-          </label>
-          <input
-            id="organizationName"
-            name="organizationName"
-            value={organizationName}
-            onChange={(event) => {
-              const nextValue = event.target.value;
-              setOrganizationName(nextValue);
+          <div className="space-y-2">
+            <label
+              htmlFor="organizationName"
+              className="text-[11px] font-medium uppercase tracking-[0.06em] text-[#9baabf]"
+            >
+              Organization name
+            </label>
+            <input
+              id="organizationName"
+              name="organizationName"
+              value={organizationName}
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                setOrganizationName(nextValue);
 
-              if (!organizationSlug || organizationSlug === slugifySegment(organizationName)) {
-                setOrganizationSlug(slugifySegment(nextValue));
-              }
-            }}
-            required
-            className="w-full rounded-md border border-white/10 bg-[#0a1422] px-4 py-3 text-sm text-[#eae5dc] outline-none transition placeholder:text-[#5e7088] focus:border-[#b08a28]"
-            placeholder="Acme Innovation Group"
-          />
+                if (!organizationSlug || organizationSlug === slugifySegment(organizationName)) {
+                  setOrganizationSlug(slugifySegment(nextValue));
+                }
+              }}
+              required
+              className="w-full rounded-md border border-white/10 bg-[#0a1422] px-4 py-3 text-sm text-[#eae5dc] outline-none transition placeholder:text-[#5e7088] focus:border-[#b08a28]"
+              placeholder="Acme Innovation Group"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label
+              htmlFor="organizationSlug"
+              className="text-[11px] font-medium uppercase tracking-[0.06em] text-[#9baabf]"
+            >
+              Organization slug
+            </label>
+            <input
+              id="organizationSlug"
+              name="organizationSlug"
+              value={organizationSlug}
+              onChange={(event) => setOrganizationSlug(event.target.value)}
+              className="w-full rounded-md border border-white/10 bg-[#0a1422] px-4 py-3 text-sm text-[#eae5dc] outline-none transition placeholder:text-[#5e7088] focus:border-[#b08a28]"
+              placeholder="acme-innovation-group"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label
+              htmlFor="workspaceName"
+              className="text-[11px] font-medium uppercase tracking-[0.06em] text-[#9baabf]"
+            >
+              Workspace name
+            </label>
+            <input
+              id="workspaceName"
+              name="workspaceName"
+              value={workspaceName}
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                setWorkspaceName(nextValue);
+
+                if (!workspaceSlug || workspaceSlug === slugifySegment(workspaceName)) {
+                  setWorkspaceSlug(slugifySegment(nextValue));
+                }
+              }}
+              required
+              className="w-full rounded-md border border-white/10 bg-[#0a1422] px-4 py-3 text-sm text-[#eae5dc] outline-none transition placeholder:text-[#5e7088] focus:border-[#b08a28]"
+              placeholder="Global Programs"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label
+              htmlFor="workspaceSlug"
+              className="text-[11px] font-medium uppercase tracking-[0.06em] text-[#9baabf]"
+            >
+              Workspace slug
+            </label>
+            <input
+              id="workspaceSlug"
+              name="workspaceSlug"
+              value={workspaceSlug}
+              onChange={(event) => setWorkspaceSlug(event.target.value)}
+              className="w-full rounded-md border border-white/10 bg-[#0a1422] px-4 py-3 text-sm text-[#eae5dc] outline-none transition placeholder:text-[#5e7088] focus:border-[#b08a28]"
+              placeholder="global-programs"
+            />
+          </div>
         </div>
 
         <div className="space-y-2">
           <label
-            htmlFor="organizationSlug"
+            htmlFor="billingEmail"
             className="text-[11px] font-medium uppercase tracking-[0.06em] text-[#9baabf]"
           >
-            Organization slug
-          </label>
-          <input
-            id="organizationSlug"
-            name="organizationSlug"
-            value={organizationSlug}
-            onChange={(event) => setOrganizationSlug(event.target.value)}
-            className="w-full rounded-md border border-white/10 bg-[#0a1422] px-4 py-3 text-sm text-[#eae5dc] outline-none transition placeholder:text-[#5e7088] focus:border-[#b08a28]"
-            placeholder="acme-innovation-group"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <label htmlFor="workspaceName" className="text-[11px] font-medium uppercase tracking-[0.06em] text-[#9baabf]">
-            Workspace name
-          </label>
-          <input
-            id="workspaceName"
-            name="workspaceName"
-            value={workspaceName}
-            onChange={(event) => {
-              const nextValue = event.target.value;
-              setWorkspaceName(nextValue);
-
-              if (!workspaceSlug || workspaceSlug === slugifySegment(workspaceName)) {
-                setWorkspaceSlug(slugifySegment(nextValue));
-              }
-            }}
-            required
-            className="w-full rounded-md border border-white/10 bg-[#0a1422] px-4 py-3 text-sm text-[#eae5dc] outline-none transition placeholder:text-[#5e7088] focus:border-[#b08a28]"
-            placeholder="Global Programs"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <label htmlFor="workspaceSlug" className="text-[11px] font-medium uppercase tracking-[0.06em] text-[#9baabf]">
-            Workspace slug
-          </label>
-          <input
-            id="workspaceSlug"
-            name="workspaceSlug"
-            value={workspaceSlug}
-            onChange={(event) => setWorkspaceSlug(event.target.value)}
-            className="w-full rounded-md border border-white/10 bg-[#0a1422] px-4 py-3 text-sm text-[#eae5dc] outline-none transition placeholder:text-[#5e7088] focus:border-[#b08a28]"
-            placeholder="global-programs"
-          />
-        </div>
-        </div>
-
-        <div className="space-y-2">
-          <label htmlFor="billingEmail" className="text-[11px] font-medium uppercase tracking-[0.06em] text-[#9baabf]">
             Billing email
           </label>
           <input
@@ -127,13 +140,16 @@ export function OnboardingForm() {
           <div className="text-[12px] text-[#5e7088]">
             Tenant creation is audited and role-aware from the first record.
           </div>
-          <button
-            type="submit"
-            disabled={isPending}
-            className="rounded-md bg-[#b08a28] px-5 py-3 text-sm font-semibold text-[#06100f] transition hover:bg-[#ccaa4a] disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            {isPending ? "Creating workspace..." : "Continue →"}
-          </button>
+          <div className="flex items-center gap-3">
+            <span className="text-[12px] text-[#9baabf]">Step 1 of 4</span>
+            <button
+              type="submit"
+              disabled={isPending}
+              className="rounded-md bg-[#b08a28] px-5 py-3 text-sm font-semibold text-[#06100f] transition hover:bg-[#ccaa4a] disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {isPending ? "Creating workspace..." : "Continue →"}
+            </button>
+          </div>
         </div>
       </form>
     </section>

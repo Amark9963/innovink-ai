@@ -3944,6 +3944,197 @@ export type Database = {
           },
         ]
       }
+      judge_calibration_exercises: {
+        Row: {
+          consensus_total_score: number | null
+          created_at: string
+          created_by: string
+          demo_url: string | null
+          id: string
+          instructions: string | null
+          is_active: boolean
+          manager_note: string | null
+          pitch_deck_url: string | null
+          problem_summary: string | null
+          program_id: string
+          reference_code: string | null
+          scorecard_id: string
+          scoring_anchors: Json
+          solution_summary: string | null
+          team_summary: string | null
+          title: string
+          updated_at: string
+          validation_summary: string | null
+        }
+        Insert: {
+          consensus_total_score?: number | null
+          created_at?: string
+          created_by: string
+          demo_url?: string | null
+          id?: string
+          instructions?: string | null
+          is_active?: boolean
+          manager_note?: string | null
+          pitch_deck_url?: string | null
+          problem_summary?: string | null
+          program_id: string
+          reference_code?: string | null
+          scorecard_id: string
+          scoring_anchors?: Json
+          solution_summary?: string | null
+          team_summary?: string | null
+          title: string
+          updated_at?: string
+          validation_summary?: string | null
+        }
+        Update: {
+          consensus_total_score?: number | null
+          created_at?: string
+          created_by?: string
+          demo_url?: string | null
+          id?: string
+          instructions?: string | null
+          is_active?: boolean
+          manager_note?: string | null
+          pitch_deck_url?: string | null
+          problem_summary?: string | null
+          program_id?: string
+          reference_code?: string | null
+          scorecard_id?: string
+          scoring_anchors?: Json
+          solution_summary?: string | null
+          team_summary?: string | null
+          title?: string
+          updated_at?: string
+          validation_summary?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "judge_calibration_exercises_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "judge_calibration_exercises_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "programs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "judge_calibration_exercises_scorecard_id_fkey"
+            columns: ["scorecard_id"]
+            isOneToOne: false
+            referencedRelation: "scorecards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      judge_calibration_scores: {
+        Row: {
+          calibration_submission_id: string
+          created_at: string
+          id: string
+          numeric_score: number | null
+          scorecard_criterion_id: string
+          updated_at: string
+        }
+        Insert: {
+          calibration_submission_id: string
+          created_at?: string
+          id?: string
+          numeric_score?: number | null
+          scorecard_criterion_id: string
+          updated_at?: string
+        }
+        Update: {
+          calibration_submission_id?: string
+          created_at?: string
+          id?: string
+          numeric_score?: number | null
+          scorecard_criterion_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "judge_calibration_scores_calibration_submission_id_fkey"
+            columns: ["calibration_submission_id"]
+            isOneToOne: false
+            referencedRelation: "judge_calibration_submissions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "judge_calibration_scores_scorecard_criterion_id_fkey"
+            columns: ["scorecard_criterion_id"]
+            isOneToOne: false
+            referencedRelation: "scorecard_criteria"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      judge_calibration_submissions: {
+        Row: {
+          calibration_exercise_id: string
+          created_at: string
+          id: string
+          judge_user_id: string
+          notes: string | null
+          program_id: string
+          status: Database["public"]["Enums"]["score_entry_status"]
+          submitted_at: string | null
+          total_score: number | null
+          updated_at: string
+        }
+        Insert: {
+          calibration_exercise_id: string
+          created_at?: string
+          id?: string
+          judge_user_id: string
+          notes?: string | null
+          program_id: string
+          status?: Database["public"]["Enums"]["score_entry_status"]
+          submitted_at?: string | null
+          total_score?: number | null
+          updated_at?: string
+        }
+        Update: {
+          calibration_exercise_id?: string
+          created_at?: string
+          id?: string
+          judge_user_id?: string
+          notes?: string | null
+          program_id?: string
+          status?: Database["public"]["Enums"]["score_entry_status"]
+          submitted_at?: string | null
+          total_score?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "judge_calibration_submissions_calibration_exercise_id_fkey"
+            columns: ["calibration_exercise_id"]
+            isOneToOne: false
+            referencedRelation: "judge_calibration_exercises"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "judge_calibration_submissions_judge_user_id_fkey"
+            columns: ["judge_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "judge_calibration_submissions_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "programs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       judge_progress: {
         Row: {
           assignments_completed: number

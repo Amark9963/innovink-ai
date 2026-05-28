@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
-import { SetupShell } from "@/components/enterprise/setup-shell";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { getCurrentUserOrNull, hasWorkspaceAccess } from "@/lib/supabase/queries";
 import { OnboardingForm } from "@/app/app/onboarding/onboarding-form";
+import { SetupShell } from "@/components/enterprise/setup-shell";
+import { getCurrentUserOrNull, hasWorkspaceAccess } from "@/lib/supabase/queries";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export default async function OnboardingPage() {
   const supabase = await createSupabaseServerClient();
@@ -48,15 +48,16 @@ export default async function OnboardingPage() {
           <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-[#5e7088]">
             Workspace Preview
           </div>
+
           <div className="rounded-xl border border-white/7 bg-[#162034] p-4">
             <div className="mb-2 text-[12px] font-semibold text-[#eae5dc]">
               Governance foundation
             </div>
             <div className="text-[11px] leading-5 text-[#9baabf]">
-              This step creates the organization, owner membership, workspace, and
-              active workspace-admin membership in one trusted transaction.
+              This step creates the organization, owner membership, workspace, and active workspace-admin membership in one trusted transaction.
             </div>
           </div>
+
           <div className="rounded-xl border border-white/7 bg-[#162034] p-4">
             <div className="mb-2 text-[12px] font-semibold text-[#eae5dc]">
               Next surfaces
@@ -67,13 +68,13 @@ export default async function OnboardingPage() {
               <div>• Approval-gated launch assets</div>
             </div>
           </div>
+
           <div className="rounded-xl border border-white/7 bg-[#162034] p-4">
             <div className="mb-2 text-[12px] font-semibold text-[#eae5dc]">
-              Auth model
+              Operator access
             </div>
             <div className="text-[11px] leading-5 text-[#9baabf]">
-              Supabase Auth is already active. Once this workspace exists, operators
-              land in the PM dashboard and can begin AI-led program setup.
+              Supabase Auth is already active. Once this workspace exists, operators land in the PM dashboard and can begin AI-led program setup.
             </div>
           </div>
         </div>
