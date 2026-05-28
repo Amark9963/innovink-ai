@@ -56,3 +56,4 @@ supabase/.temp/
 
 # product docs and planning docs
 *.md
+!README.md
