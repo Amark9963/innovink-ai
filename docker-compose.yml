@@ -5,23 +5,8 @@ services:
       dockerfile: Dockerfile
     env_file:
       - .env
-    restart: unless-stopped
-    expose:
-      - "3000"
-
-  caddy:
-    image: caddy:2.10
+    environment:
+      HOSTNAME: 0.0.0.0
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./ops/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - web
-
-volumes:
-  caddy_data:
-  caddy_config:
+      - "127.0.0.1:3100:3000"

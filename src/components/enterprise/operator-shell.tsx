@@ -31,6 +31,7 @@ type OperatorShellProps = {
   workspaces: WorkspaceAccessRow[];
   programs: ProgramAccessRow[];
   sessionId?: string | null;
+  programSetupNavOnly?: boolean;
   children: React.ReactNode;
   mainClassName?: string;
 };
@@ -48,6 +49,7 @@ export function OperatorShell({
   workspaces,
   programs,
   sessionId,
+  programSetupNavOnly = false,
   children,
   mainClassName,
 }: OperatorShellProps) {
@@ -120,11 +122,7 @@ export function OperatorShell({
         <div className="px-[15px] pb-1 pt-3 text-[9px] font-semibold uppercase tracking-[0.12em] text-[#374d65]">
           Workspace
         </div>
-        <ShellNavLink
-          href="/app/dashboard"
-          isActive={activeNav === "overview"}
-          label="Overview"
-        />
+        <ShellNavLink href="/app/dashboard" isActive={activeNav === "overview"} label="Overview" />
         <ShellNavLink
           href={sessionId ? `/app/create?session=${sessionId}` : "/app/create"}
           isActive={activeNav === "ai-workspace"}
@@ -142,9 +140,13 @@ export function OperatorShell({
           label="Execution Plan"
           disabled={!sessionId}
         />
-        <ShellNavPlaceholder label="Submissions" />
-        <ShellNavPlaceholder label="Judging" />
-        <ShellNavPlaceholder label="Reports" />
+        {programSetupNavOnly ? null : (
+          <>
+            <ShellNavPlaceholder label="Submissions" />
+            <ShellNavPlaceholder label="Judging" />
+            <ShellNavPlaceholder label="Reports" />
+          </>
+        )}
         <ShellNavLink
           href={sessionId ? `/app/create/${sessionId}/approvals` : "/app/create"}
           isActive={activeNav === "approvals"}

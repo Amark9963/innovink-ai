@@ -20,8 +20,8 @@ export default async function LoginPage() {
       <div className="relative z-10 w-full max-w-[424px]">
         <LoginClient />
         <div className="mt-5 text-center text-[11.5px] text-[#5e7088]">
-          Powered by <span className="font-medium text-[#ccaa4a]">Innovink</span>{" "}
-          Enterprise · <span>Privacy Policy</span> · <span>Terms of Service</span>
+          Powered by <span className="font-medium text-[#ccaa4a]">Innovink</span> Enterprise ·{" "}
+          <span>Privacy Policy</span> · <span>Terms of Service</span>
         </div>
       </div>
     </main>

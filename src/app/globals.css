@@ -87,3 +87,167 @@ select {
     linear-gradient(90deg, rgba(18, 63, 116, 0.05) 1px, transparent 1px);
   background-size: 40px 40px;
 }
+
+@keyframes marketingFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes marketingSlideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(44px) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes marketingFloat {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes marketingOrbDrift {
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+
+  33% {
+    transform: translate(24px, -18px) scale(1.05);
+  }
+
+  66% {
+    transform: translate(-18px, 20px) scale(0.96);
+  }
+
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+}
+
+@keyframes marketingBeamIn {
+  from {
+    opacity: 0;
+    transform: scaleX(0);
+    transform-origin: left center;
+  }
+
+  to {
+    opacity: 0.65;
+    transform: scaleX(1);
+    transform-origin: left center;
+  }
+}
+
+.marketing-page {
+  background:
+    radial-gradient(circle at top left, rgba(176, 138, 40, 0.08), transparent 22%),
+    linear-gradient(180deg, #07101f 0%, #091325 100%);
+}
+
+.marketing-grid-mask {
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-size: 38px 38px;
+  mask-image: radial-gradient(ellipse 82% 78% at 50% 42%, black 35%, transparent 82%);
+}
+
+.hero-beam {
+  height: 1px;
+  background:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(176, 138, 40, 0.32) 30%,
+      rgba(215, 180, 90, 0.48) 50%,
+      rgba(176, 138, 40, 0.32) 70%,
+      transparent 100%
+    );
+  animation: marketingBeamIn 1.4s cubic-bezier(0.22, 1, 0.36, 1) 0.2s both;
+}
+
+.hero-orb-gold,
+.hero-orb-blue {
+  animation: marketingOrbDrift 16s ease-in-out infinite;
+}
+
+.hero-orb-blue {
+  animation-direction: reverse;
+  animation-duration: 18s;
+}
+
+.fade-up {
+  opacity: 0;
+  animation: marketingFadeUp 0.72s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.slide-in-right {
+  opacity: 0;
+  animation: marketingSlideInRight 0.92s cubic-bezier(0.22, 1, 0.36, 1) 0.28s forwards;
+}
+
+.float-slow {
+  animation: marketingFloat 4.8s ease-in-out infinite;
+}
+
+.gold-text {
+  background: linear-gradient(
+    120deg,
+    #d7b45a 0%,
+    #efcf78 28%,
+    #b08a28 58%,
+    #e5bd62 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.section-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #d7b45a;
+}
+
+.section-eyebrow::before {
+  content: "";
+  width: 1.15rem;
+  height: 1px;
+  background: #b08a28;
+}
+
+.section-title {
+  margin-top: 1rem;
+  font-size: clamp(2.2rem, 3.4vw, 3rem);
+  line-height: 1.12;
+  letter-spacing: -0.045em;
+  font-weight: 650;
+  color: #fff;
+}
+
+.section-copy {
+  margin-top: 1rem;
+  font-size: 1rem;
+  line-height: 2rem;
+  color: #a8b8cb;
+}
