@@ -1,8 +1,4 @@
-{
-  email ops@innovink.ai
-}
-
-:80 {
+innovink.solvintell.com {
   encode zstd gzip
   reverse_proxy web:3000
 }
