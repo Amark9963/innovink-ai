@@ -1,19 +1,37 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type AuthMode = "sign-in" | "create-account" | "magic-link";
 
-const PRIMARY_LABELS: Record<AuthMode, string> = {
+const HEADING: Record<AuthMode, string> = {
+  "sign-in": "Welcome back",
+  "create-account": "Create your account",
+  "magic-link": "Magic link sign-in",
+};
+
+const SUBHEADING: Record<AuthMode, string> = {
+  "sign-in": "Sign in to your Innovink workspace.",
+  "create-account": "Set up your Innovink workspace account.",
+  "magic-link": "Enter your work email to receive a secure link.",
+};
+
+const SUBMIT_LABEL: Record<AuthMode, string> = {
   "sign-in": "Sign in to Innovink",
   "create-account": "Create account",
   "magic-link": "Send magic link",
 };
 
-export function LoginClient({ nextPath }: { nextPath: string }) {
+export function LoginClient({
+  nextPath,
+  confirmed = false,
+}: {
+  nextPath: string;
+  confirmed?: boolean;
+}) {
   const router = useRouter();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [mode, setMode] = useState<AuthMode>("sign-in");
@@ -21,6 +39,12 @@ export function LoginClient({ nextPath }: { nextPath: string }) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [isPending, startTransition] = useTransition();
+
+  function switchMode(next: AuthMode) {
+    setMode(next);
+    setMessage(null);
+    setErrorMessage(null);
+  }
 
   async function handleSubmit(formData: FormData) {
     const email = String(formData.get("email") ?? "").trim();
@@ -40,15 +64,10 @@ export function LoginClient({ nextPath }: { nextPath: string }) {
         const { error } = await supabase.auth.signInWithOtp({
           email,
           options: {
-            emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`,
+            emailRedirectTo: `${window.location.origin}/auth/callback?auth_flow=magic-link&next=${encodeURIComponent(nextPath)}`,
           },
         });
-
-        if (error) {
-          setErrorMessage(mapAuthErrorMessage(error.message, mode));
-          return;
-        }
-
+        if (error) { setErrorMessage(mapAuthErrorMessage(error.message, mode)); return; }
         setMessage("Magic link sent. Open the email on this device to continue.");
         return;
       }
@@ -63,159 +82,101 @@ export function LoginClient({ nextPath }: { nextPath: string }) {
           email,
           password,
           options: {
-            data: {
-              full_name: fullName || undefined,
-            },
-            emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`,
+            data: { full_name: fullName || undefined },
+            emailRedirectTo: `${window.location.origin}/auth/callback?auth_flow=signup&next=${encodeURIComponent(nextPath)}`,
           },
         });
-
-        if (error) {
-          setErrorMessage(mapAuthErrorMessage(error.message, mode));
-          return;
-        }
-
+        if (error) { setErrorMessage(mapAuthErrorMessage(error.message, mode)); return; }
         setMessage("Account created. Check your email to confirm the session.");
         return;
       }
 
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) {
-        setErrorMessage(mapAuthErrorMessage(error.message, mode));
-        return;
-      }
-
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) { setErrorMessage(mapAuthErrorMessage(error.message, mode)); return; }
       router.push(nextPath);
       router.refresh();
     });
   }
 
+  const ssoMessage = "Enterprise SSO rollout is not enabled yet. Use email sign-in for now.";
+
   return (
-    <section className="overflow-hidden rounded-[16px] border border-white/10 bg-[#162034] shadow-[0_16px_48px_rgba(0,0,0,0.65)]">
-      <div className="h-[2px] bg-[linear-gradient(90deg,#b08a28,#ccaa4a_50%,transparent)]" />
+    <section className="overflow-hidden rounded-[24px] border border-white/[0.09] bg-[linear-gradient(168deg,rgba(15,24,42,0.99),rgba(8,14,28,1))] shadow-[0_24px_72px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.04)]">
+      {/* Gold top accent */}
+      <div className="h-[2px] bg-[linear-gradient(90deg,transparent_0%,#9a7822_15%,#d6b15c_45%,#d6b15c_55%,#9a7822_85%,transparent_100%)]" />
+
       <div className="px-8 py-8">
-        <div className="mb-[26px] flex items-center justify-center gap-[11px]">
-          <div className="flex h-9 w-9 items-center justify-center rounded-md border border-[#b08a2838] bg-[#b08a2810] text-[15px] font-bold text-[#ccaa4a]">
-            IN
-          </div>
-          <div>
-            <div className="text-[18px] font-semibold tracking-[-0.02em] text-[#eae5dc]">
-              Innovink
-            </div>
-            <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-[#b08a28]">
-              Enterprise Platform
-            </div>
-          </div>
+
+        {/* Heading */}
+        <div className="mb-7">
+          <h2 className="text-[28px] font-semibold tracking-[-0.035em] text-[#f0ece4]">
+            {HEADING[mode]}
+          </h2>
+          <p className="mt-1.5 text-[14px] leading-relaxed text-[#4a6278]">
+            {SUBHEADING[mode]}
+          </p>
         </div>
 
-        <div className="mb-[22px] text-center">
-          <div className="mb-[5px] text-[21px] font-semibold tracking-[-0.02em] text-[#eae5dc]">
-            Welcome back
+        {/* Confirmed banner */}
+        {confirmed && (
+          <div className="mb-6 rounded-[12px] border border-[#2d7a5840] bg-[#2d7a581a] px-4 py-3 text-[13px] leading-5 text-[#9ad0b7]">
+            Email confirmed. Sign in to continue.
           </div>
-          <div className="text-[13px] text-[#9baabf]">
-            Sign in to your organization&apos;s workspace
-          </div>
-        </div>
+        )}
 
-        <div className="mb-5 flex items-center gap-2 rounded-md border border-white/7 bg-[#1b2840] px-[14px] py-[9px]">
-          <div className="flex h-6 w-6 items-center justify-center rounded bg-[#b08a2810] text-[10px] font-bold text-[#ccaa4a]">
-            A
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="text-[12px] font-medium text-[#eae5dc]">Innovink Workspace</div>
-            <div className="text-[10.5px] text-[#5e7088]">Enterprise · Email sign-in enabled</div>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              setMode("magic-link");
-              setMessage("Use your work email to request a secure magic link.");
-              setErrorMessage(null);
-            }}
-            className="text-[11px] text-[#9baabf] transition hover:text-[#eae5dc]"
-          >
-            Change →
-          </button>
-        </div>
-
-        <div className="space-y-2">
+        {/* SSO — single column */}
+        <div className="mb-6 space-y-2">
           <SsoButton
             label="Continue with Microsoft Azure AD"
-            icon="MS"
-            accent="bg-[#0078D4]"
-            onClick={() => {
-              setMode("sign-in");
-              setMessage("Enterprise SSO rollout is not enabled in this environment yet. Use email sign-in for now.");
-              setErrorMessage(null);
-            }}
+            icon={<MicrosoftIcon />}
+            onClick={() => { setMessage(ssoMessage); setErrorMessage(null); }}
           />
           <SsoButton
             label="Continue with Okta"
-            icon="O"
-            accent="bg-[#007DC1]"
-            onClick={() => {
-              setMode("sign-in");
-              setMessage("Enterprise SSO rollout is not enabled in this environment yet. Use email sign-in for now.");
-              setErrorMessage(null);
-            }}
+            icon={<OktaIcon />}
+            onClick={() => { setMessage(ssoMessage); setErrorMessage(null); }}
           />
           <SsoButton
             label="Continue with Google Workspace"
-            icon="G"
-            accent="bg-[#4285F4]"
-            onClick={() => {
-              setMode("sign-in");
-              setMessage("Enterprise SSO rollout is not enabled in this environment yet. Use email sign-in for now.");
-              setErrorMessage(null);
-            }}
+            icon={<GoogleIcon />}
+            onClick={() => { setMessage(ssoMessage); setErrorMessage(null); }}
           />
         </div>
 
-        <div className="my-[18px] flex items-center gap-[10px] text-[11.5px] text-[#5e7088] before:h-px before:flex-1 before:bg-white/10 after:h-px after:flex-1 after:bg-white/10">
-          <span>or sign in with email</span>
+        {/* Divider */}
+        <div className="mb-6 flex items-center gap-3 text-[11px] uppercase tracking-[0.14em] text-[#2e4255] before:h-px before:flex-1 before:bg-white/[0.07] after:h-px after:flex-1 after:bg-white/[0.07]">
+          <span>{mode === "magic-link" ? "or magic link" : "or sign in with email"}</span>
         </div>
 
-        <form action={handleSubmit} className="space-y-5">
-          <div className="space-y-2">
-            <label htmlFor="email" className="text-sm font-medium text-[#9baabf]">
-              Work email
-            </label>
+        {/* Form */}
+        <form action={handleSubmit} className="space-y-4">
+          <FormField label="Work email">
             <input
               id="email"
               name="email"
               type="email"
               required
               autoComplete="email"
-              placeholder="team@company.com"
-              className="w-full rounded-md border border-white/10 bg-[#0a1422] px-4 py-3 text-sm text-[#eae5dc] outline-none transition placeholder:text-[#5e7088] focus:border-[#b08a28]"
+              placeholder="you@company.com"
+              className="w-full rounded-[12px] border border-white/[0.08] bg-[#07111f] px-4 py-3.5 text-[14px] text-[#f0ece4] outline-none transition-all placeholder:text-[#2e4255] focus:border-[#b08a2860] focus:bg-[#091628] focus:shadow-[0_0_0_3px_rgba(176,138,40,0.10)]"
             />
-          </div>
+          </FormField>
 
-          {mode === "create-account" ? (
-            <div className="space-y-2">
-              <label htmlFor="fullName" className="text-sm font-medium text-[#9baabf]">
-                Full name
-              </label>
+          {mode === "create-account" && (
+            <FormField label="Full name">
               <input
                 id="fullName"
                 name="fullName"
                 type="text"
                 autoComplete="name"
-                placeholder="Amark Singh"
-                className="w-full rounded-md border border-white/10 bg-[#0a1422] px-4 py-3 text-sm text-[#eae5dc] outline-none transition placeholder:text-[#5e7088] focus:border-[#b08a28]"
+                placeholder="Your full name"
+                className="w-full rounded-[12px] border border-white/[0.08] bg-[#07111f] px-4 py-3.5 text-[14px] text-[#f0ece4] outline-none transition-all placeholder:text-[#2e4255] focus:border-[#b08a2860] focus:bg-[#091628] focus:shadow-[0_0_0_3px_rgba(176,138,40,0.10)]"
               />
-            </div>
-          ) : null}
+            </FormField>
+          )}
 
-          {mode !== "magic-link" ? (
-            <div className="space-y-2">
-              <label htmlFor="password" className="text-sm font-medium text-[#9baabf]">
-                Password
-              </label>
+          {mode !== "magic-link" && (
+            <FormField label="Password">
               <div className="relative">
                 <input
                   id="password"
@@ -223,151 +184,173 @@ export function LoginClient({ nextPath }: { nextPath: string }) {
                   type={showPassword ? "text" : "password"}
                   required
                   autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
-                  placeholder={mode === "sign-in" ? "Enter your password" : "Use a strong password"}
-                  className="w-full rounded-md border border-white/10 bg-[#0a1422] px-4 py-3 pr-11 text-sm text-[#eae5dc] outline-none transition placeholder:text-[#5e7088] focus:border-[#b08a28]"
+                  placeholder={mode === "sign-in" ? "Enter your password" : "Create a strong password"}
+                  className="w-full rounded-[12px] border border-white/[0.08] bg-[#07111f] px-4 py-3.5 pr-12 text-[14px] text-[#f0ece4] outline-none transition-all placeholder:text-[#2e4255] focus:border-[#b08a2860] focus:bg-[#091628] focus:shadow-[0_0_0_3px_rgba(176,138,40,0.10)]"
                 />
                 <button
                   type="button"
-                  onClick={() => setShowPassword((current) => !current)}
-                  className="absolute right-[10px] top-1/2 -translate-y-1/2 text-[#5e7088] transition hover:text-[#9baabf]"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#2e4255] transition hover:text-[#7a90ab]"
                   aria-label={showPassword ? "Hide password" : "Show password"}
                 >
                   <EyeIcon />
                 </button>
               </div>
-            </div>
-          ) : null}
+            </FormField>
+          )}
 
-          <div className="flex items-center justify-between gap-3">
+          {/* Mode switcher + forgot */}
+          <div className="flex items-center justify-between pt-0.5 text-[12.5px]">
             <button
               type="button"
-              onClick={() => {
-                setMode(
-                  mode === "sign-in" ? "create-account" : mode === "create-account" ? "magic-link" : "sign-in",
-                );
-                setMessage(null);
-                setErrorMessage(null);
-              }}
-              className="text-[12px] text-[#9baabf] transition hover:text-[#eae5dc]"
+              onClick={() =>
+                switchMode(mode === "sign-in" ? "create-account" : mode === "create-account" ? "magic-link" : "sign-in")
+              }
+              className="text-[#4a6278] transition hover:text-[#9fb1c7]"
             >
               {mode === "sign-in"
                 ? "Need an account?"
                 : mode === "create-account"
-                  ? "Prefer magic link?"
+                  ? "Use magic link instead"
                   : "Use password instead"}
             </button>
-            <Link href="/login" className="text-[12px] text-[#9baabf] transition hover:text-[#eae5dc]">
-              Forgot password?
-            </Link>
+            {mode !== "create-account" && (
+              <Link href="/login" className="text-[#4a6278] transition hover:text-[#9fb1c7]">
+                Forgot password?
+              </Link>
+            )}
           </div>
 
-          {errorMessage ? (
-            <p className="rounded-md border border-[#9b3a3a66] bg-[#9b3a3a1a] px-4 py-3 text-sm text-[#f1bcbc]">
+          {/* Error */}
+          {errorMessage && (
+            <div className="rounded-[12px] border border-[#9b3a3a4a] bg-[#9b3a3a16] px-4 py-3 text-[13px] leading-5 text-[#f1bcbc]">
               {errorMessage}
-            </p>
-          ) : null}
+            </div>
+          )}
 
-          {message ? (
-            <p className="rounded-md border border-[#2d7a5840] bg-[#2d7a581a] px-4 py-3 text-sm text-[#9ad0b7]">
+          {/* Message */}
+          {message && (
+            <div className="rounded-[12px] border border-[#2d7a5840] bg-[#2d7a581a] px-4 py-3 text-[13px] leading-5 text-[#9ad0b7]">
               {message}
-            </p>
-          ) : null}
+            </div>
+          )}
 
+          {/* Submit */}
           <button
             type="submit"
             disabled={isPending}
-            className="flex w-full items-center justify-center rounded-md bg-[#b08a28] px-4 py-3 text-sm font-semibold text-[#06100f] transition hover:bg-[#ccaa4a] disabled:cursor-not-allowed disabled:opacity-70"
+            className="mt-1 flex w-full items-center justify-center gap-2 rounded-[12px] bg-[#b08a28] px-4 py-3.5 text-[14px] font-semibold text-[#06100f] transition-all hover:bg-[#c49a35] hover:shadow-[0_4px_24px_rgba(176,138,40,0.32)] disabled:cursor-not-allowed disabled:opacity-55"
           >
-            {isPending ? "Working..." : PRIMARY_LABELS[mode]}
+            {isPending ? (
+              <>
+                <SpinnerIcon />
+                Working&hellip;
+              </>
+            ) : (
+              <>
+                {SUBMIT_LABEL[mode]}
+                <ArrowIcon />
+              </>
+            )}
           </button>
-
-          <div className="mt-[18px] flex flex-wrap items-center justify-center gap-3 border-t border-white/7 pt-4 text-[9.5px] tracking-[0.02em] text-[#5e7088]">
-            <TrustItem label="256-bit TLS" />
-            <TrustSeparator />
-            <TrustItem label="SOC 2 Type II" />
-            <TrustSeparator />
-            <TrustItem label="ISO 27001" />
-            <TrustSeparator />
-            <span>GDPR Compliant</span>
-          </div>
         </form>
       </div>
     </section>
   );
 }
 
-function SsoButton({
-  label,
-  icon,
-  accent,
-  onClick,
-}: {
-  label: string;
-  icon: string;
-  accent: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex w-full items-center gap-[10px] rounded-md border border-white/10 bg-[#1b2840] px-[14px] py-[10px] text-left text-[13px] text-[#9baabf] transition hover:border-white/20 hover:bg-[#22314b] hover:text-[#eae5dc]"
-    >
-      <div className={`flex h-[22px] w-[22px] items-center justify-center rounded text-[11px] font-bold text-white ${accent}`}>
-        {icon}
-      </div>
-      <span className="flex-1">{label}</span>
-      <span aria-hidden className="text-[14px]">
-        →
-      </span>
-    </button>
-  );
-}
+/* ── Sub-components ─────────────────────────────────────────────────── */
 
-function TrustItem({ label }: { label: string }) {
+function FormField({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex items-center gap-1">
-      <ShieldIcon />
-      <span>{label}</span>
+    <div className="space-y-2">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#3a5268]">
+        {label}
+      </div>
+      {children}
     </div>
   );
 }
 
-function TrustSeparator() {
-  return <span className="h-[10px] w-px bg-white/7" aria-hidden />;
+function SsoButton({ label, icon, onClick }: { label: string; icon: ReactNode; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-3 rounded-[12px] border border-white/[0.07] bg-[#0c1a2e] px-4 py-3 text-[13px] font-medium text-[#6a8099] transition hover:border-white/[0.13] hover:bg-[#112035] hover:text-[#bdd0e2]"
+    >
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center">{icon}</span>
+      <span className="flex-1 text-left">{label}</span>
+      <ChevronRightIcon />
+    </button>
+  );
 }
 
-function ShieldIcon() {
+function MicrosoftIcon() {
   return (
-    <svg
-      width="9"
-      height="9"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M8 1L2 4v4c0 4 6 7 6 7s6-3 6-7V4L8 1z" />
+    <svg width="16" height="16" viewBox="0 0 21 21" fill="none" aria-hidden>
+      <rect x="1" y="1" width="9" height="9" fill="#F25022" />
+      <rect x="11" y="1" width="9" height="9" fill="#7FBA00" />
+      <rect x="1" y="11" width="9" height="9" fill="#00A4EF" />
+      <rect x="11" y="11" width="9" height="9" fill="#FFB900" />
+    </svg>
+  );
+}
+
+function OktaIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden>
+      <circle cx="12" cy="12" r="11" fill="#007DC1" />
+      <circle cx="12" cy="12" r="5" fill="white" />
+    </svg>
+  );
+}
+
+function GoogleIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden>
+      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05" />
+      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+    </svg>
+  );
+}
+
+function ChevronRightIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M6 4l4 4-4 4" />
+    </svg>
+  );
+}
+
+function ArrowIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3 8h10M9 4l4 4-4 4" />
+    </svg>
+  );
+}
+
+function SpinnerIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden className="animate-spin">
+      <path d="M12 2v4" />
+      <path d="M12 18v4" opacity="0.3" />
+      <path d="M4.93 4.93l2.83 2.83" opacity="0.6" />
+      <path d="M16.24 16.24l2.83 2.83" opacity="0.3" />
+      <path d="M2 12h4" opacity="0.5" />
+      <path d="M18 12h4" opacity="0.3" />
+      <path d="M4.93 19.07l2.83-2.83" opacity="0.4" />
+      <path d="M16.24 7.76l2.83-2.83" opacity="0.3" />
     </svg>
   );
 }
 
 function EyeIcon() {
   return (
-    <svg
-      width="15"
-      height="15"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z" />
       <circle cx="8" cy="8" r="2" />
     </svg>
@@ -383,16 +366,15 @@ function mapAuthErrorMessage(message: string, mode: AuthMode) {
     normalized.includes("over_email_send_rate_limit")
   ) {
     if (mode === "create-account") {
-      return "Supabase has temporarily throttled signup confirmation emails for this project. Wait a few minutes before creating another new account, or sign in with an existing account instead.";
+      return "Supabase has temporarily throttled signup confirmation emails. Wait a few minutes before creating another account, or sign in with an existing account instead.";
     }
-
     if (mode === "magic-link") {
-      return "Supabase has temporarily throttled magic-link emails for this project. Wait a few minutes before requesting another email, or use password sign-in if the account already exists.";
+      return "Supabase has temporarily throttled magic-link emails. Wait a few minutes before requesting another, or use password sign-in if the account already exists.";
     }
   }
 
   if (normalized.includes("email not confirmed")) {
-    return "This account exists but the email session is not confirmed yet. Open the last confirmation email for this address, or wait a moment before requesting another one.";
+    return "This account exists but the email is not confirmed yet. Open the last confirmation email, or wait a moment before requesting another.";
   }
 
   return message;
