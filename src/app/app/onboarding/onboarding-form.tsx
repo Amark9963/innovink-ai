@@ -138,16 +138,16 @@ export function OnboardingForm() {
 
         <div className="flex items-center justify-between border-t border-white/7 pt-5">
           <div className="text-[12px] text-[#5e7088]">
-            Tenant creation is audited and role-aware from the first record.
+            Initial tenant creation is audited and role-aware from the first record.
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-[12px] text-[#9baabf]">Step 1 of 4</span>
+            <span className="text-[12px] text-[#9baabf]">Initial setup</span>
             <button
               type="submit"
               disabled={isPending}
               className="rounded-md bg-[#b08a28] px-5 py-3 text-sm font-semibold text-[#06100f] transition hover:bg-[#ccaa4a] disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {isPending ? "Creating workspace..." : "Continue →"}
+              {isPending ? "Creating workspace..." : "Launch workspace ->"}
             </button>
           </div>
         </div>

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getCurrentUserOrNull, hasWorkspaceAccess } from "@/lib/supabase/queries";
+import { getCurrentUserOrNull, getInitialOnboardingState } from "@/lib/supabase/queries";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export default async function AppIndexPage() {
@@ -10,6 +10,6 @@ export default async function AppIndexPage() {
     redirect("/login");
   }
 
-  const hasWorkspace = await hasWorkspaceAccess(supabase, user);
-  redirect(hasWorkspace ? "/app/dashboard" : "/app/onboarding");
+  const onboarding = await getInitialOnboardingState(supabase, user);
+  redirect(onboarding.isComplete ? "/app/dashboard" : "/app/onboarding");
 }

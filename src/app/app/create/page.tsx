@@ -11,6 +11,7 @@ import {
 import {
   getAgentCreateWorkspaceData,
   getCurrentUserOrNull,
+  getInitialOnboardingState,
   getProgramAccessRows,
 } from "@/lib/supabase/queries";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -92,15 +93,17 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
     redirect("/login");
   }
 
+  const onboarding = await getInitialOnboardingState(supabase, user);
+
+  if (!onboarding.isComplete) {
+    redirect("/app/onboarding");
+  }
+
   const data = await getAgentCreateWorkspaceData(supabase, user, {
     sessionId: params.session,
     workspaceId: params.workspace,
   });
   const programs = await getProgramAccessRows(supabase);
-
-  if (data.workspaces.length === 0) {
-    redirect("/app/onboarding");
-  }
 
   const selectedWorkspace = data.selectedWorkspace ?? data.workspaces[0];
   const activeSession = data.activeSession;

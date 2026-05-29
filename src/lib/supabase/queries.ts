@@ -11,6 +11,15 @@ export type WorkspaceAccessRow = {
   workspaceRole: Database["public"]["Enums"]["workspace_membership_role"];
   organizationId: string;
   organizationName: string;
+  aiSettings: Database["public"]["Tables"]["workspaces"]["Row"]["ai_settings"];
+};
+
+export type InitialOnboardingDefaults = {
+  completedAt: string;
+  timezone: string;
+  programTypes: string[];
+  participantSelfSignupAllowed: boolean;
+  requireApprovalBeforePublish: boolean;
 };
 
 export type ProgramAccessRow = {
@@ -1261,7 +1270,7 @@ export async function getWorkspaceAccessRows(
   const { data, error } = await supabase
     .from("workspace_memberships")
     .select(
-      "workspace_id, role, status, workspaces!inner(id, name, slug, organization_id, organizations!inner(name))",
+      "workspace_id, role, status, workspaces!inner(id, name, slug, organization_id, ai_settings, organizations!inner(name))",
     )
     .eq("user_id", user.id)
     .eq("status", "active")
@@ -1278,6 +1287,7 @@ export async function getWorkspaceAccessRows(
     workspaceRole: row.role,
     organizationId: row.workspaces.organization_id,
     organizationName: row.workspaces.organizations.name,
+    aiSettings: row.workspaces.ai_settings,
   })) satisfies WorkspaceAccessRow[];
 }
 
@@ -1287,6 +1297,79 @@ export async function hasWorkspaceAccess(
 ) {
   const memberships = await getWorkspaceAccessRows(supabase, user);
   return memberships.length > 0;
+}
+
+function isRecord(value: Json): value is Record<string, Json> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function getInitialOnboardingDefaults(
+  workspace: Pick<WorkspaceAccessRow, "aiSettings">,
+): InitialOnboardingDefaults | null {
+  if (!isRecord(workspace.aiSettings)) {
+    return null;
+  }
+
+  const onboarding = workspace.aiSettings.onboarding;
+
+  if (!isRecord(onboarding)) {
+    return null;
+  }
+
+  const completedAt =
+    typeof onboarding.completedAt === "string" && onboarding.completedAt.length > 0
+      ? onboarding.completedAt
+      : null;
+  const timezone =
+    typeof onboarding.timezone === "string" && onboarding.timezone.length > 0
+      ? onboarding.timezone
+      : null;
+  const programTypes = Array.isArray(onboarding.programTypes)
+    ? onboarding.programTypes.filter((value): value is string => typeof value === "string")
+    : [];
+  const participantSelfSignupAllowed =
+    typeof onboarding.participantSelfSignupAllowed === "boolean"
+      ? onboarding.participantSelfSignupAllowed
+      : null;
+  const requireApprovalBeforePublish =
+    typeof onboarding.requireApprovalBeforePublish === "boolean"
+      ? onboarding.requireApprovalBeforePublish
+      : null;
+
+  if (
+    !completedAt ||
+    !timezone ||
+    programTypes.length === 0 ||
+    participantSelfSignupAllowed === null ||
+    requireApprovalBeforePublish === null
+  ) {
+    return null;
+  }
+
+  return {
+    completedAt,
+    timezone,
+    programTypes,
+    participantSelfSignupAllowed,
+    requireApprovalBeforePublish,
+  };
+}
+
+export async function getInitialOnboardingState(
+  supabase: TypedSupabaseClient,
+  user: User,
+) {
+  const workspaces = await getWorkspaceAccessRows(supabase, user);
+  const primaryWorkspace = workspaces[0] ?? null;
+  const defaults = primaryWorkspace ? getInitialOnboardingDefaults(primaryWorkspace) : null;
+
+  return {
+    workspaces,
+    primaryWorkspace,
+    hasWorkspaceAccess: workspaces.length > 0,
+    isComplete: Boolean(defaults),
+    defaults,
+  };
 }
 
 export async function getAgentCreateWorkspaceData(

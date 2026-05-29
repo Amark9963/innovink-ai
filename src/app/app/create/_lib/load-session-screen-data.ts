@@ -4,6 +4,7 @@ import {
   type ProgramAccessRow,
   getAgentCreateWorkspaceData,
   getCurrentUserOrNull,
+  getInitialOnboardingState,
   getProgramAccessRows,
 } from "@/lib/supabase/queries";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -16,14 +17,16 @@ export async function loadSessionScreenData(sessionId: string) {
     redirect("/login");
   }
 
+  const onboarding = await getInitialOnboardingState(supabase, user);
+
+  if (!onboarding.isComplete) {
+    redirect("/app/onboarding");
+  }
+
   const data: AgentCreateWorkspaceData = await getAgentCreateWorkspaceData(supabase, user, {
     sessionId,
   });
   const programs: ProgramAccessRow[] = await getProgramAccessRows(supabase);
-
-  if (data.workspaces.length === 0) {
-    redirect("/app/onboarding");
-  }
 
   if (!data.activeSession || data.activeSession.id !== sessionId) {
     redirect("/app/create");

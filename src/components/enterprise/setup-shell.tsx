@@ -41,7 +41,7 @@ export function SetupShell({
         <div className="flex flex-1 items-center gap-3 px-5">
           <div className="text-[13px] font-medium text-[#eae5dc]">Workspace Setup</div>
           <div className="h-[18px] w-px bg-white/7" />
-          <div className="text-[12px] text-[#5e7088]">Configure your Innovink workspace</div>
+          <div className="text-[12px] text-[#5e7088]">Create your Innovink tenant foundation</div>
         </div>
 
         <div className="flex items-center gap-3 px-5">
@@ -58,12 +58,6 @@ export function SetupShell({
           <div className="text-[11px] text-[#9baabf]">
             {progressLabel || `Step ${activeCount} of ${steps.length}`}
           </div>
-          <button
-            type="button"
-            className="rounded-md px-3 py-1.5 text-[11px] text-[#5e7088] transition hover:bg-white/[0.04] hover:text-[#9baabf]"
-          >
-            Skip for now
-          </button>
         </div>
       </header>
 

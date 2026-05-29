@@ -4,8 +4,8 @@ import type { ReactNode } from "react";
 import { OperatorShell } from "@/components/enterprise/operator-shell";
 import {
   getCurrentUserOrNull,
+  getInitialOnboardingState,
   getProgramAccessRows,
-  getWorkspaceAccessRows,
 } from "@/lib/supabase/queries";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -36,7 +36,19 @@ type ActivityItem = {
   badge?: string;
 };
 
-export default async function DashboardPage() {
+type DashboardPageProps = {
+  searchParams?: Promise<{
+    status?: string;
+  }>;
+};
+
+const statusCopy: Record<string, string> = {
+  "onboarding-complete":
+    "Workspace setup is complete. Start your first program in the AI workspace and Innovink will generate the brief, plan, assets, and approvals from there.",
+};
+
+export default async function DashboardPage({ searchParams }: DashboardPageProps) {
+  const params = (await searchParams) ?? {};
   const supabase = await createSupabaseServerClient();
   const user = await getCurrentUserOrNull(supabase);
 
@@ -44,12 +56,14 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  const workspaces = await getWorkspaceAccessRows(supabase, user);
-  const programs = await getProgramAccessRows(supabase);
+  const onboarding = await getInitialOnboardingState(supabase, user);
 
-  if (workspaces.length === 0) {
+  if (!onboarding.isComplete) {
     redirect("/app/onboarding");
   }
+
+  const workspaces = onboarding.workspaces;
+  const programs = await getProgramAccessRows(supabase);
 
   const [
     { data: recentApprovals, error: approvalsError },
@@ -67,9 +81,7 @@ export default async function DashboardPage() {
       .eq("created_by", user.id)
       .order("updated_at", { ascending: false })
       .limit(5),
-    supabase
-      .from("program_registrations")
-      .select("id", { count: "exact", head: true }),
+    supabase.from("program_registrations").select("id", { count: "exact", head: true }),
   ]);
 
   if (approvalsError) throw approvalsError;
@@ -84,12 +96,15 @@ export default async function DashboardPage() {
   );
   const deadlinesThisWeek = countDeadlinesThisWeek(activePrograms);
   const userName = user.user_metadata.full_name ?? user.email ?? "Operator";
-  const primaryWorkspace = workspaces[0];
+  const primaryWorkspace = onboarding.primaryWorkspace ?? workspaces[0];
   const activityFeed = buildActivityFeed({
     approvals: (recentApprovals ?? []) as ApprovalRow[],
     sessions: (recentSessions ?? []) as SessionRow[],
     programs: activePrograms,
   });
+  const isFirstRun = activePrograms.length === 0 && activityFeed.length === 0;
+  const statusMessage =
+    typeof params.status === "string" ? statusCopy[params.status] ?? null : null;
 
   return (
     <OperatorShell
@@ -119,44 +134,61 @@ export default async function DashboardPage() {
       }
     >
       <div className="mx-auto max-w-[1240px] px-8 py-7">
+        {statusMessage ? (
+          <div className="mb-5 rounded-xl border border-[#2d7a5840] bg-[#2d7a5814] px-5 py-4">
+            <div className="mb-1 text-[12px] font-semibold uppercase tracking-[0.08em] text-[#9ad0b7]">
+              Workspace ready
+            </div>
+            <div className="text-[13px] leading-6 text-[#d5e6da]">{statusMessage}</div>
+          </div>
+        ) : null}
+
         <div className="mb-5 flex items-start justify-between gap-4">
           <div>
             <div className="mb-1 text-[22px] font-semibold tracking-[-0.02em] text-[#eae5dc]">
               Good morning, {firstName(userName)}.
             </div>
             <div className="text-[13px] text-[#9baabf]">
-              You have{" "}
-              <span className="font-medium text-[#dba84a]">
-                {pendingApprovals.length} items awaiting approval
-              </span>{" "}
-              and{" "}
-              <span className="font-medium text-[#d66d6d]">
-                {deadlinesThisWeek} upcoming deadline{deadlinesThisWeek === 1 ? "" : "s"}
-              </span>{" "}
-              this week.
+              {isFirstRun ? (
+                <>
+                  Your workspace is ready. The fastest next step is to{" "}
+                  <span className="font-medium text-[#dba84a]">create your first program</span>{" "}
+                  so Innovink can generate the initial launch kit and governed workflow.
+                </>
+              ) : (
+                <>
+                  You have{" "}
+                  <span className="font-medium text-[#dba84a]">
+                    {pendingApprovals.length} items awaiting approval
+                  </span>{" "}
+                  and{" "}
+                  <span className="font-medium text-[#d66d6d]">
+                    {deadlinesThisWeek} upcoming deadline{deadlinesThisWeek === 1 ? "" : "s"}
+                  </span>{" "}
+                  this week.
+                </>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              disabled
-              className="rounded-md border border-white/10 px-3 py-2 text-[11.5px] font-medium text-[#9baabf]"
+            <Link
+              href="/app/create"
+              className="rounded-md border border-white/10 px-3 py-2 text-[11.5px] font-medium text-[#9baabf] transition hover:bg-white/[0.04] hover:text-[#eae5dc]"
             >
               Browse templates
-            </button>
-            <button
-              type="button"
-              disabled
-              className="rounded-md border border-white/10 px-3 py-2 text-[11.5px] font-medium text-[#9baabf]"
+            </Link>
+            <Link
+              href="/app/create?prompt=Import%20an%20existing%20program%20brief%20and%20prepare%20a%20governed%20launch%20plan."
+              className="rounded-md border border-white/10 px-3 py-2 text-[11.5px] font-medium text-[#9baabf] transition hover:bg-white/[0.04] hover:text-[#eae5dc]"
             >
               Import brief
-            </button>
+            </Link>
             <Link
               href="/app/create"
               className="inline-flex items-center gap-2 rounded-md bg-[#b08a28] px-4 py-2 text-[12.5px] font-semibold text-[#06100f] transition hover:bg-[#ccaa4a]"
             >
               <span className="text-[14px] leading-none">+</span>
-              New Program
+              {activePrograms.length === 0 ? "Create First Program" : "New Program"}
             </Link>
           </div>
         </div>
@@ -177,7 +209,11 @@ export default async function DashboardPage() {
           <MetricCard
             label="Total Participants"
             value={String(participantCount ?? 0)}
-            sublabel={participantCount && participantCount > 0 ? "Across visible program registrations" : "No participant registrations yet"}
+            sublabel={
+              participantCount && participantCount > 0
+                ? "Across visible program registrations"
+                : "No participant registrations yet"
+            }
             variant="blue"
           />
           <MetricCard
@@ -192,7 +228,7 @@ export default async function DashboardPage() {
           <div>
             <div className="mb-3 flex items-center justify-between">
               <div className="text-[13px] font-semibold text-[#eae5dc]">Active Programs</div>
-              <span className="text-[11.5px] text-[#5e7088]">View all →</span>
+              <span className="text-[11.5px] text-[#5e7088]">View all -&gt;</span>
             </div>
 
             <div className="mb-6 grid gap-3 xl:grid-cols-3">
@@ -248,15 +284,35 @@ export default async function DashboardPage() {
                   </article>
                 ))
               ) : (
-                <div className="rounded-xl border border-dashed border-white/10 bg-[#162034] p-5 text-[12px] leading-6 text-[#9baabf] xl:col-span-3">
-                  No visible program records yet. Use the AI workspace to create the first governed program.
-                </div>
+                <article className="rounded-xl border border-dashed border-[#b08a2838] bg-[#162034] p-6 xl:col-span-3">
+                  <div className="mb-2 text-[14px] font-semibold text-[#eae5dc]">
+                    No programs yet
+                  </div>
+                  <div className="max-w-[680px] text-[12.5px] leading-6 text-[#9baabf]">
+                    Start in the AI workspace to describe the first program you want to run. Innovink will turn that into a structured brief, execution plan, launch assets, and approval flow.
+                  </div>
+                  <div className="mt-4 flex items-center gap-3">
+                    <Link
+                      href="/app/create"
+                      className="inline-flex items-center gap-2 rounded-md bg-[#b08a28] px-4 py-2 text-[12.5px] font-semibold text-[#06100f] transition hover:bg-[#ccaa4a]"
+                    >
+                      Start with AI
+                      <ArrowRightIcon />
+                    </Link>
+                    <Link
+                      href="/app/create?prompt=Show%20recommended%20program%20templates%20for%20this%20workspace."
+                      className="rounded-md border border-white/10 px-3 py-2 text-[11.5px] font-medium text-[#9baabf] transition hover:bg-white/[0.04] hover:text-[#eae5dc]"
+                    >
+                      Review templates
+                    </Link>
+                  </div>
+                </article>
               )}
             </div>
 
             <div className="mb-3 flex items-center justify-between">
               <div className="text-[13px] font-semibold text-[#eae5dc]">Recent Activity</div>
-              <span className="text-[11.5px] text-[#5e7088]">View all →</span>
+              <span className="text-[11.5px] text-[#5e7088]">View all -&gt;</span>
             </div>
 
             <div className="rounded-xl border border-white/7 bg-[#162034] px-4 py-3">
@@ -268,11 +324,15 @@ export default async function DashboardPage() {
                       index < activityFeed.length - 1 ? "border-b border-white/[0.035]" : ""
                     }`}
                   >
-                    <div className={`mt-0.5 flex h-[26px] w-[26px] items-center justify-center rounded-md ${item.iconClass}`}>
+                    <div
+                      className={`mt-0.5 flex h-[26px] w-[26px] items-center justify-center rounded-md ${item.iconClass}`}
+                    >
                       {item.icon}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="text-[12.5px] leading-[1.45] text-[#d6dee8]">{item.title}</div>
+                      <div className="text-[12.5px] leading-[1.45] text-[#d6dee8]">
+                        {item.title}
+                      </div>
                       <div className="mt-[2px] text-[10.5px] text-[#5e7088]">{item.time}</div>
                     </div>
                     {item.badge ? <ActivityBadge label={item.badge} /> : null}
@@ -322,7 +382,7 @@ export default async function DashboardPage() {
                     </div>
                   ))}
                   <div className="px-[10px] pt-2 text-center text-[12px] text-[#5e7088]">
-                    View all {recentApprovals.length} items →
+                    View all {recentApprovals.length} items -&gt;
                   </div>
                 </>
               ) : (
@@ -341,7 +401,7 @@ export default async function DashboardPage() {
                     ? `Registration for ${activePrograms[0].name} is approaching. Communication templates and launch assets should be reviewed before the next milestone.`
                     : "The AI workspace is ready. Start from a template or describe a new program to generate the first governed launch kit."
                 }
-                actionLabel={activePrograms[0] ? "Open workspace →" : "Start with AI →"}
+                actionLabel={activePrograms[0] ? "Open workspace ->" : "Start with AI ->"}
                 actionHref="/app/create"
               />
               <InsightCard
@@ -350,16 +410,29 @@ export default async function DashboardPage() {
                     ? `${pendingApprovals.length} approval item${pendingApprovals.length === 1 ? "" : "s"} are waiting on program-manager review.`
                     : "No approval blockers are active right now across your visible workspace scopes."
                 }
-                actionLabel="Review queue →"
+                actionLabel={
+                  pendingApprovals.length > 0
+                    ? "Review queue ->"
+                    : "Open dashboard playbook ->"
+                }
                 actionHref="/app/create"
               />
             </div>
 
             <div className="mb-3 mt-4 text-[13px] font-semibold text-[#eae5dc]">Quick Access</div>
             <div className="flex flex-col gap-[2px]">
-              <QuickAccessItem label="Program Brief templates" />
-              <QuickAccessItem label="Reporting center" />
-              <QuickAccessItem label="Judge management" />
+              <QuickAccessItem
+                label="Program Brief templates"
+                href="/app/create?prompt=Show%20program%20brief%20templates%20for%20my%20workspace."
+              />
+              <QuickAccessItem
+                label="Reporting center"
+                href="/app/create?prompt=Show%20the%20reporting%20and%20sponsor-safe%20output%20workflows%20available%20for%20this%20workspace."
+              />
+              <QuickAccessItem
+                label="Judge management"
+                href="/app/create?prompt=Help%20me%20prepare%20judge%20setup%20for%20a%20new%20program."
+              />
             </div>
           </div>
         </div>
@@ -387,7 +460,9 @@ function MetricCard({
   } as const;
 
   return (
-    <div className={`rounded-xl border border-white/7 border-l-2 bg-[#162034] p-5 ${variantClasses[variant]}`}>
+    <div
+      className={`rounded-xl border border-white/7 border-l-2 bg-[#162034] p-5 ${variantClasses[variant]}`}
+    >
       <div className="text-[28px] font-bold leading-none">{value}</div>
       <div className="mt-2 text-[12px] font-medium text-[#eae5dc]">{label}</div>
       <div className="mt-1 text-[11px] text-[#5e7088]">{sublabel}</div>
@@ -408,7 +483,9 @@ function ProgramBadge({ status }: { status: string }) {
   const display = statusMap[status] ?? statusMap.archived;
 
   return (
-    <span className={`rounded-md border px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.06em] ${display.className}`}>
+    <span
+      className={`rounded-md border px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.06em] ${display.className}`}
+    >
       {display.label}
     </span>
   );
@@ -428,7 +505,10 @@ function ProgressBlock({
         <span className={progress.valueClass}>{progress.valueText}</span>
       </div>
       <div className="h-[6px] overflow-hidden rounded-full bg-white/[0.05]">
-        <div className={`h-full rounded-full ${progress.barClass}`} style={{ width: `${progress.percent}%` }} />
+        <div
+          className={`h-full rounded-full ${progress.barClass}`}
+          style={{ width: `${progress.percent}%` }}
+        />
       </div>
     </div>
   );
@@ -448,9 +528,7 @@ function InsightCard({
   return (
     <div
       className={`rounded-xl border p-4 ${
-        highlighted
-          ? "border-[#b08a2838] bg-[#162034]"
-          : "border-white/7 bg-[#162034]"
+        highlighted ? "border-[#b08a2838] bg-[#162034]" : "border-white/7 bg-[#162034]"
       }`}
     >
       <div className="mb-[10px] flex items-center gap-2">
@@ -472,15 +550,15 @@ function InsightCard({
   );
 }
 
-function QuickAccessItem({ label }: { label: string }) {
+function QuickAccessItem({ label, href }: { label: string; href: string }) {
   return (
-    <button
-      type="button"
+    <Link
+      href={href}
       className="flex items-center gap-2 rounded-md px-[10px] py-2 text-left text-[12.5px] text-[#9baabf] transition hover:bg-white/[0.04] hover:text-[#eae5dc]"
     >
       <SquareChartIcon />
       {label}
-    </button>
+    </Link>
   );
 }
 
@@ -494,7 +572,17 @@ function ActivityBadge({ label }: { label: string }) {
 
 function BellIcon() {
   return (
-    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
       <path d="M8 1.5C5.5 1.5 3.5 3.5 3.5 6v3l-1.5 2h12l-1.5-2V6C12.5 3.5 10.5 1.5 8 1.5Z" />
       <path d="M6.5 13.5a1.5 1.5 0 0 0 3 0" />
     </svg>
@@ -503,7 +591,17 @@ function BellIcon() {
 
 function SettingsIcon() {
   return (
-    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
       <circle cx="8" cy="8" r="2.5" />
       <path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3.2 3.2l1 1M11.8 11.8l1 1M12.8 3.2l-1 1M4.2 11.8l-1 1" />
     </svg>
@@ -512,7 +610,17 @@ function SettingsIcon() {
 
 function SparkIcon() {
   return (
-    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
       <path d="M8 1.5 9.5 5 14 7l-4.5 1.5L8 13 6.5 8.5 2 7l4.5-2L8 1.5Z" />
     </svg>
   );
@@ -520,9 +628,37 @@ function SparkIcon() {
 
 function SquareChartIcon() {
   return (
-    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
       <rect x="1.5" y="1.5" width="13" height="13" rx="1" />
       <path d="M5 11V7M8 11V5M11 11V3.5" />
+    </svg>
+  );
+}
+
+function ArrowRightIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M3 8h10M9 4l4 4-4 4" />
     </svg>
   );
 }
@@ -567,7 +703,17 @@ function buildActivityFeed({
 
 function InboxSparkIcon() {
   return (
-    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
       <path d="M1.5 9.5h13M1.5 9.5l3-8h7l3 8v4a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-4Z" />
     </svg>
   );
@@ -579,7 +725,7 @@ function getProgramProgress(
   if (program.status === "published") {
     return {
       label: "Applications received",
-      valueText: program.registrationClosesAt ? `Live` : "Open",
+      valueText: program.registrationClosesAt ? "Live" : "Open",
       valueClass: "text-[#84b1d6]",
       percent: 24,
       barClass: "bg-[#4d87bc]",
