@@ -25,6 +25,16 @@ const SUBMIT_LABEL: Record<AuthMode, string> = {
   "magic-link": "Send magic link",
 };
 
+function getAuthRedirectBase() {
+  const url = new URL(window.location.href);
+
+  if (url.hostname === "0.0.0.0" || url.hostname === "::" || url.hostname === "[::]") {
+    url.hostname = "localhost";
+  }
+
+  return url.origin;
+}
+
 export function LoginClient({
   nextPath,
   confirmed = false,
@@ -61,10 +71,11 @@ export function LoginClient({
 
     startTransition(async () => {
       if (mode === "magic-link") {
+        const redirectBase = getAuthRedirectBase();
         const { error } = await supabase.auth.signInWithOtp({
           email,
           options: {
-            emailRedirectTo: `${window.location.origin}/auth/callback?auth_flow=magic-link&next=${encodeURIComponent(nextPath)}`,
+            emailRedirectTo: `${redirectBase}/auth/callback?auth_flow=magic-link&next=${encodeURIComponent(nextPath)}`,
           },
         });
         if (error) { setErrorMessage(mapAuthErrorMessage(error.message, mode)); return; }
@@ -78,12 +89,13 @@ export function LoginClient({
       }
 
       if (mode === "create-account") {
+        const redirectBase = getAuthRedirectBase();
         const { error } = await supabase.auth.signUp({
           email,
           password,
           options: {
             data: { full_name: fullName || undefined },
-            emailRedirectTo: `${window.location.origin}/auth/callback?auth_flow=signup&next=${encodeURIComponent(nextPath)}`,
+            emailRedirectTo: `${redirectBase}/auth/callback?auth_flow=signup&next=${encodeURIComponent(nextPath)}`,
           },
         });
         if (error) { setErrorMessage(mapAuthErrorMessage(error.message, mode)); return; }
