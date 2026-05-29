@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { sendCreateAgentMessageAction } from "@/app/app/create/actions";
 
@@ -8,12 +8,15 @@ export function CreateMessageComposer({
   workspaceId,
   sessionId,
   defaultMessage,
+  onOptimisticSubmit,
 }: {
   workspaceId: string;
   sessionId?: string | null;
   defaultMessage?: string;
+  onOptimisticSubmit?: (message: string) => void;
 }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   return (
     <form
@@ -21,6 +24,10 @@ export function CreateMessageComposer({
       action={sendCreateAgentMessageAction}
       onSubmit={() => {
         setIsSubmitting(true);
+        const message = textareaRef.current?.value?.trim();
+        if (message) {
+          onOptimisticSubmit?.(message);
+        }
       }}
     >
       <input type="hidden" name="workspaceId" value={workspaceId} />
@@ -28,6 +35,7 @@ export function CreateMessageComposer({
       <div className="rounded-xl border border-white/10 bg-[#0a1422] px-4 py-3">
         <div className="flex items-end gap-2">
           <textarea
+            ref={textareaRef}
             key={`composer-${sessionId ?? "new"}-${defaultMessage ?? ""}`}
             name="message"
             defaultValue={defaultMessage ?? ""}
@@ -49,7 +57,7 @@ export function CreateMessageComposer({
           </div>
         ) : (
           <div className="mt-3 text-[11px] text-[#5e7088]">
-            Generate creates or updates the governed brief first, then you review before moving to plan and approvals.
+            Send an instruction to Innova, then review the governed brief before moving into plan and approvals.
           </div>
         )}
       </div>
@@ -78,11 +86,11 @@ function ComposerActions({ isSubmitting }: { isSubmitting: boolean }) {
         {busy ? (
           <>
             <SpinnerIcon />
-            Generating...
+            Sending...
           </>
         ) : (
           <>
-            Generate
+            Send
             <SendIcon />
           </>
         )}

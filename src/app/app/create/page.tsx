@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { OperatorShell } from "@/components/enterprise/operator-shell";
 import {
   executeApprovedPlanAction,
   generateProgramPlanAction,
   prepareApprovalRequestAction,
   reviewApprovalRequestAction,
 } from "@/app/app/create/actions";
+import { CreateWorkspaceLive } from "@/app/app/create/_components/create-workspace-live";
+import { OperatorShell } from "@/components/enterprise/operator-shell";
 import {
   getAgentCreateWorkspaceData,
   getCurrentUserOrNull,
@@ -14,7 +15,6 @@ import {
   getProgramAccessRows,
 } from "@/lib/supabase/queries";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { CreateMessageComposer } from "@/app/app/create/_components/create-message-composer";
 
 type CreatePageProps = {
   searchParams?: Promise<{
@@ -354,365 +354,22 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
         </>
       }
     >
-      <div className="flex h-[calc(100vh-56px)] flex-col bg-[#07101f]">
-        <div className="flex shrink-0 items-center justify-between border-b border-white/7 bg-[#111e30] px-5 py-3">
-          <div className="flex items-center gap-3">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md border border-[#b08a2838] bg-[#b08a2810] text-[11px] font-semibold text-[#ccaa4a] shadow-[0_0_16px_rgba(176,138,40,0.22)]">
-              AI
-            </div>
-            <div>
-              <div className="text-[13px] font-medium text-[#eae5dc]">
-                Innova - AI Program Architect
-              </div>
-              <div className="text-[11px] text-[#9baabf]">
-                Ready to build your program · Describe it in any format
-              </div>
-            </div>
-          </div>
-          <button
-            type="button"
-            disabled={data.sessions.length === 0}
-            className="rounded-md border border-white/10 px-3 py-1.5 text-[11.5px] text-[#9baabf] transition hover:bg-white/[0.04] hover:text-[#eae5dc] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            History
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-8 py-7">
-          {params.error ? (
-            <div className="mx-auto mb-5 max-w-[580px] rounded-lg border border-[#9b3a3a66] bg-[#9b3a3a1a] px-4 py-3 text-[12px] text-[#f1bcbc]">
-              {params.error}
-            </div>
-          ) : null}
-          {params.status && statusCopy[params.status] ? (
-            <div className="mx-auto mb-5 max-w-[580px] rounded-lg border border-[#3a6e9e40] bg-[#3a6e9e1a] px-4 py-3 text-[12px] text-[#c4d8ec]">
-              <div>{statusCopy[params.status]}</div>
-              {activeSessionId && params.status === "brief-ready" ? (
-                <div className="mt-3">
-                  <Link
-                    href={`/app/create/${activeSessionId}/brief`}
-                    className="inline-flex items-center gap-2 rounded-md border border-[#84b1d640] px-3 py-2 text-[11.5px] font-medium text-[#d9e7f4] transition hover:bg-[#84b1d614]"
-                  >
-                    Review brief
-                    <ArrowRightIcon />
-                  </Link>
-                </div>
-              ) : null}
-              {activeSessionId && params.status === "plan-generated" ? (
-                <div className="mt-3">
-                  <Link
-                    href={`/app/create/${activeSessionId}/plan`}
-                    className="inline-flex items-center gap-2 rounded-md border border-[#84b1d640] px-3 py-2 text-[11.5px] font-medium text-[#d9e7f4] transition hover:bg-[#84b1d614]"
-                  >
-                    Review plan
-                    <ArrowRightIcon />
-                  </Link>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-          {params.prompt ? (
-            <div className="mx-auto mb-5 max-w-[580px] rounded-lg border border-[#b08a2838] bg-[#b08a2810] px-4 py-3 text-[12px] text-[#e4d8b4]">
-              Innova loaded a follow-up prompt from the review workspace. You can edit it before sending.
-            </div>
-          ) : null}
-
-          {data.runs.length > 0 ? (
-            <div className="mx-auto mb-6 max-w-[860px] rounded-xl border border-white/7 bg-[#101a2c] p-5">
-              <div className="mb-2 text-[12px] font-semibold uppercase tracking-[0.08em] text-[#ccaa4a]">
-                Agent runtime
-              </div>
-              <div className="text-[18px] font-semibold tracking-[-0.02em] text-[#eae5dc]">
-                Active PM workspace trace
-              </div>
-              <p className="mt-2 max-w-[720px] text-[12.5px] leading-6 text-[#9baabf]">
-                This workspace now records runs, events, and tool activity behind each PM instruction so the agent state is visible instead of implicit.
-              </p>
-              <div className="mt-4 grid gap-4 lg:grid-cols-[1.05fr_1.35fr]">
-                <div className="space-y-3">
-                  {data.runs.slice(0, 3).map((run) => (
-                    <article
-                      key={run.id}
-                      className="rounded-lg border border-white/7 bg-[#162034] px-4 py-3"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="text-[12.5px] font-semibold text-[#eae5dc]">
-                            {humanizeRunType(run.runType)}
-                          </div>
-                          <div className="mt-1 text-[10.5px] uppercase tracking-[0.08em] text-[#5e7088]">
-                            {run.id.slice(0, 8)} · {run.status}
-                          </div>
-                        </div>
-                        <span className="rounded-sm border border-white/10 bg-white/[0.03] px-2 py-1 text-[9px] uppercase tracking-[0.08em] text-[#9baabf]">
-                          {formatDateTime(run.createdAt)}
-                        </span>
-                      </div>
-                      {run.summary ? (
-                        <p className="mt-3 text-[11.5px] leading-5 text-[#c4d0df]">
-                          {run.summary}
-                        </p>
-                      ) : null}
-                      {run.goalText ? (
-                        <p className="mt-3 line-clamp-3 text-[11px] leading-5 text-[#7f90a6]">
-                          {run.goalText}
-                        </p>
-                      ) : null}
-                    </article>
-                  ))}
-                </div>
-                <div className="rounded-lg border border-white/7 bg-[#162034] p-4">
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <div className="text-[12.5px] font-semibold text-[#eae5dc]">
-                      Recent runtime events
-                    </div>
-                    <div className="text-[10.5px] uppercase tracking-[0.08em] text-[#5e7088]">
-                      Latest visible events
-                    </div>
-                  </div>
-                  <div className="space-y-3">
-                    {data.events.slice(0, 8).map((event) => (
-                      <div
-                        key={event.id}
-                        className="rounded-lg border border-white/7 bg-[#1b2840] px-3 py-3"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="text-[11.5px] font-semibold text-[#eae5dc]">
-                              {event.title}
-                            </div>
-                            <div className="mt-1 text-[10px] uppercase tracking-[0.08em] text-[#5e7088]">
-                              {event.eventType} · {event.severity}
-                            </div>
-                          </div>
-                          <div className="text-[10px] text-[#7f90a6]">
-                            {formatDateTime(event.createdAt)}
-                          </div>
-                        </div>
-                        {event.body ? (
-                          <p className="mt-2 text-[11px] leading-5 text-[#9baabf]">
-                            {event.body}
-                          </p>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : null}
-
-          {isFirstRun ? (
-            <div className="mx-auto mb-6 max-w-[860px] rounded-xl border border-[#b08a2838] bg-[#162034] p-5">
-              <div className="mb-2 text-[12px] font-semibold uppercase tracking-[0.08em] text-[#ccaa4a]">
-                First program workflow
-              </div>
-              <div className="text-[18px] font-semibold tracking-[-0.02em] text-[#eae5dc]">
-                Start with one clear program description
-              </div>
-              <p className="mt-2 max-w-[720px] text-[12.5px] leading-6 text-[#9baabf]">
-                Tell Innova what kind of program you want to run, who it is for, the timeline, and any governance requirements. Innovink will draft the brief, plan, launch assets, and approval path from there.
-              </p>
-              <div className="mt-4 grid gap-3 md:grid-cols-3">
-                <QuickStartPrompt
-                  href={`/app/create?workspace=${selectedWorkspace.workspaceId}&prompt=${encodeURIComponent(
-                    "Create a global employee hackathon for our organization with team formation, registration, submission, two judging rounds, and a sponsor-safe final report.",
-                  )}`}
-                  title="Use a proven pattern"
-                  body="Start from a structured template prompt instead of a blank message."
-                />
-                <QuickStartPrompt
-                  href={`/app/create?workspace=${selectedWorkspace.workspaceId}&prompt=${encodeURIComponent(
-                    "I already have a rough program idea. Help me turn it into a governed program brief and execution plan.",
-                  )}`}
-                  title="Refine a rough idea"
-                  body="Let Innova ask follow-up questions and structure the program for you."
-                />
-                <QuickStartPrompt
-                  href={`/app/create?workspace=${selectedWorkspace.workspaceId}&prompt=${encodeURIComponent(
-                    "Import an existing brief or summarize the kind of program we want to run and prepare the launch workflow.",
-                  )}`}
-                  title="Work from existing material"
-                  body="Bring an existing brief, concept note, or outline into the AI workspace."
-                />
-              </div>
-            </div>
-          ) : null}
-
-          <div className="mx-auto mb-7 max-w-[580px]">
-            <div className="mb-3 text-center text-[11px] font-semibold uppercase tracking-[0.1em] text-[#5e7088]">
-              Quick-start templates
-            </div>
-            <div className="grid gap-2 md:grid-cols-2">
-              {templates.map((template) => (
-                <Link
-                  key={template.name}
-                  href={`/app/create?workspace=${selectedWorkspace.workspaceId}&prompt=${encodeURIComponent(template.prompt)}`}
-                  className="rounded-lg border border-white/7 bg-[#162034] p-[14px] transition hover:-translate-y-px hover:border-[#b08a2838] hover:bg-[#1b2840]"
-                >
-                  <div
-                    className={`mb-[10px] flex h-8 w-8 items-center justify-center rounded-md text-[11px] font-semibold ${template.iconClass}`}
-                  >
-                    <TemplateIcon label={template.name} />
-                  </div>
-                  <div className="mb-1 text-[12.5px] font-semibold text-[#eae5dc]">
-                    {template.name}
-                  </div>
-                  <div className="text-[11px] leading-[1.45] text-[#9baabf]">
-                    {template.description}
-                  </div>
-                  <div className="mt-[10px] flex items-center justify-between">
-                    <span className="rounded-sm border border-white/10 bg-white/[0.03] px-2 py-1 text-[9px] uppercase tracking-[0.06em] text-[#9baabf]">
-                      {template.badge}
-                    </span>
-                    <span className="text-[11px] text-[#5e7088]">Use -&gt;</span>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </div>
-
-          <div className="mx-auto max-w-[580px] space-y-4">
-            {data.messages.length > 0 ? (
-              data.messages.map((message) => (
-                <article
-                  key={message.id}
-                  className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-                >
-                  <div className="flex max-w-full gap-3">
-                    {message.role !== "user" ? (
-                      <div className="mt-1 flex h-7 w-7 items-center justify-center rounded-md bg-[#b08a2810] text-[10px] font-semibold text-[#ccaa4a]">
-                        AI
-                      </div>
-                    ) : null}
-                    <div className="min-w-0">
-                      <div className="mb-1 flex items-center gap-3 text-[10.5px] text-[#5e7088]">
-                        <span className="font-semibold uppercase tracking-[0.08em]">
-                          {message.role === "user" ? "Program Manager" : "Innova"}
-                        </span>
-                        <span>{formatDateTime(message.createdAt)}</span>
-                      </div>
-                      <div
-                        className={`rounded-[16px] border px-4 py-3 text-[13px] leading-6 ${
-                          message.role === "user"
-                            ? "border-[#21486f] bg-[#16375a] text-white"
-                            : "border-white/7 bg-[#162034] text-[#eae5dc]"
-                        }`}
-                      >
-                        <p className="whitespace-pre-wrap">{message.contentText}</p>
-                      </div>
-                    </div>
-                  </div>
-                </article>
-              ))
-            ) : (
-              <div className="flex max-w-[580px] gap-3">
-                <div className="mt-1 flex h-7 w-7 items-center justify-center rounded-md bg-[#b08a2810] text-[10px] font-semibold text-[#ccaa4a]">
-                  AI
-                </div>
-                <div className="min-w-0">
-                  <div className="mb-1 flex items-center gap-3 text-[10.5px] text-[#5e7088]">
-                    <span className="font-semibold uppercase tracking-[0.08em]">Innova</span>
-                    <span>Just now</span>
-                  </div>
-                  <div className="rounded-[2px_16px_16px_16px] border border-white/7 bg-[#162034] px-4 py-3 text-[13px] leading-6 text-[#eae5dc]">
-                    <p>Hello - I&apos;m Innova, your AI program architect.</p>
-                    <p className="mt-3">
-                      Tell me about the innovation program you want to run, and I&apos;ll set up the full operational structure: program brief, execution plan, registration and submission flows, judging setup, communications, and reporting.
-                    </p>
-                    <p className="mt-3 text-[12px] text-[#9baabf]">
-                      You can describe it in plain language, use a template above, or paste an existing brief to get started.
-                    </p>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <Link
-                        href={`/app/create?workspace=${selectedWorkspace.workspaceId}&prompt=${encodeURIComponent(
-                          "Create an employee hackathon for our organization with registration, submission, judging, and reporting.",
-                        )}`}
-                        className="rounded-md border border-white/10 px-3 py-2 text-[11.5px] font-medium text-[#9baabf] transition hover:bg-white/[0.04] hover:text-[#eae5dc]"
-                      >
-                        Use example prompt
-                      </Link>
-                      <Link
-                        href={`/app/create?workspace=${selectedWorkspace.workspaceId}&prompt=${encodeURIComponent(
-                          "Help me choose the best program template for my workspace and explain why.",
-                        )}`}
-                        className="rounded-md border border-white/10 px-3 py-2 text-[11.5px] font-medium text-[#9baabf] transition hover:bg-white/[0.04] hover:text-[#eae5dc]"
-                      >
-                        Ask for recommendations
-                      </Link>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="shrink-0 border-t border-white/7 bg-[#0c1525] px-6 py-4">
-          <div className="mx-auto max-w-[720px]">
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              <span className="mr-1 text-[9.5px] font-semibold uppercase tracking-[0.1em] text-[#5e7088]">
-                Mode
-              </span>
-              <div className="rounded-sm border border-[#b08a2838] bg-[#b08a2810] px-2 py-1 text-[10.5px] text-[#ccaa4a]">
-                Full program setup
-              </div>
-              <div className="rounded-sm border border-white/10 bg-white/[0.03] px-2 py-1 text-[10.5px] text-[#9baabf]">
-                Brief only
-              </div>
-              <div className="rounded-sm border border-white/10 bg-white/[0.03] px-2 py-1 text-[10.5px] text-[#9baabf]">
-                Plan only
-              </div>
-            </div>
-
-            {data.sessions.length > 0 ? (
-              <div className="mb-3 flex flex-wrap gap-2">
-                {data.sessions.slice(0, 4).map((session) => (
-                  <Link
-                    key={session.id}
-                    href={`/app/create?session=${session.id}&workspace=${session.workspaceId}`}
-                    className={`rounded-sm border px-2 py-1 text-[10.5px] ${
-                      session.id === activeSessionId
-                        ? "border-[#b08a2838] bg-[#b08a2810] text-[#ccaa4a]"
-                        : "border-white/10 bg-white/[0.03] text-[#9baabf]"
-                    }`}
-                  >
-                    {session.title ?? "Untitled workspace"}
-                  </Link>
-                ))}
-              </div>
-            ) : null}
-
-            <CreateMessageComposer
-              workspaceId={selectedWorkspace.workspaceId}
-              sessionId={activeSessionId}
-              defaultMessage={params.prompt ?? ""}
-            />
-          </div>
-        </div>
-      </div>
+      <CreateWorkspaceLive
+        key={`workspace-live-${activeSessionId ?? "new"}-${data.messages.length}-${data.runs.length}-${data.events.length}-${params.status ?? "idle"}-${params.error ?? "ok"}`}
+        workspaceId={selectedWorkspace.workspaceId}
+        sessionId={activeSessionId}
+        initialSessions={data.sessions}
+        initialMessages={data.messages}
+        initialRuns={data.runs}
+        initialEvents={data.events}
+        initialPrompt={params.prompt ?? ""}
+        initialStatus={params.status ?? null}
+        initialError={params.error ?? null}
+        statusCopy={statusCopy}
+        isFirstRun={isFirstRun}
+        templates={templates}
+      />
     </OperatorShell>
-  );
-}
-
-function QuickStartPrompt({
-  href,
-  title,
-  body,
-}: {
-  href: string;
-  title: string;
-  body: string;
-}) {
-  return (
-    <Link
-      href={href}
-      className="rounded-lg border border-white/7 bg-[#1b2840] p-4 transition hover:border-[#b08a2838] hover:bg-[#21324f]"
-    >
-      <div className="text-[12.5px] font-semibold text-[#eae5dc]">{title}</div>
-      <div className="mt-2 text-[11.5px] leading-5 text-[#9baabf]">{body}</div>
-      <div className="mt-3 text-[11px] text-[#ccaa4a]">Load prompt -&gt;</div>
-    </Link>
   );
 }
 
@@ -752,7 +409,10 @@ function BriefSummary({ brief }: { brief: unknown }) {
       <InfoRow label="Program window" value={timeline.liveProgramWindow} />
       <InfoRow label="Evaluation" value={getStringValue(briefRecord.evaluationModel)} />
       <InfoRow label="Mentoring" value={getStringValue(briefRecord.mentoringModel)} />
-      <InfoRow label="Sponsor visibility" value={getStringValue(briefRecord.sponsorVisibility)} />
+      <InfoRow
+        label="Sponsor visibility"
+        value={getStringValue(briefRecord.sponsorVisibility)}
+      />
       <InfoRow label="Key deliverables" value={deliverables} />
     </div>
   );
@@ -768,104 +428,6 @@ function InfoRow({ label, value }: { label: string; value?: string | null }) {
         {value && value.trim().length > 0 ? value : "Not set"}
       </p>
     </div>
-  );
-}
-
-function TemplateIcon({ label }: { label: string }) {
-  if (label === "Employee Hackathon") return <SparkIcon />;
-  if (label === "Open Innovation Call") return <InboxIcon />;
-  if (label === "Corporate Accelerator") return <CalendarIcon />;
-  if (label === "Venture Client Scouting") return <CompassIcon />;
-  if (label === "Incubator Program") return <DocumentIcon />;
-
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M8 2v12M2 8h12" />
-    </svg>
-  );
-}
-
-function SparkIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M8 1.5 9.5 5 14 7l-4.5 1.5L8 13 6.5 8.5 2 7l4.5-2L8 1.5Z" />
-    </svg>
-  );
-}
-
-function InboxIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M1.5 9.5h13M1.5 9.5l3-8h7l3 8v4a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-4Z" />
-    </svg>
-  );
-}
-
-function CalendarIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <rect x="1.5" y="3.5" width="13" height="11" rx="1" />
-      <path d="M5 1.5v4M11 1.5v4M1.5 7.5h13" />
-    </svg>
-  );
-}
-
-function CompassIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="m9.5 6.5-3 3 1.2-4.2 4.3-1.1-2.5 2.3Z" />
-      <circle cx="8" cy="8" r="5.5" />
-    </svg>
   );
 }
 
@@ -888,24 +450,6 @@ function DocumentIcon() {
   );
 }
 
-function ArrowRightIcon() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M3 8h10M9 4l4 4-4 4" />
-    </svg>
-  );
-}
-
 function getStringValue(value: unknown) {
   return typeof value === "string" ? value : null;
 }
@@ -914,22 +458,4 @@ function getArrayPreview(value: unknown) {
   return Array.isArray(value)
     ? value.filter((item) => typeof item === "string").join(", ")
     : null;
-}
-
-function formatDateTime(value: string | null) {
-  if (!value) {
-    return "Just now";
-  }
-
-  return new Intl.DateTimeFormat("en-SG", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
-
-function humanizeRunType(value: string) {
-  return value
-    .split("_")
-    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
-    .join(" ");
 }
