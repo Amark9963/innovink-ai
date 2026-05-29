@@ -168,6 +168,7 @@ serve(async (request) => {
         jsonSchema: programBriefDraftJsonSchema,
         validator: programBriefDraftSchema,
         prompt,
+        strict: true,
       });
 
       return jsonResponse(generated);
@@ -180,10 +181,14 @@ serve(async (request) => {
       jsonSchema: programPlanDraftJsonSchema,
       validator: programPlanDraftSchema,
       prompt,
+      strict: false,
     });
 
     return jsonResponse(generated);
   } catch (error) {
+    console.error("generate-program-agent-draft failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
     return jsonResponse(
       { error: error instanceof Error ? error.message : "Unknown function error." },
       500,
@@ -245,12 +250,14 @@ async function callOpenAiJson<T>({
   jsonSchema,
   validator,
   prompt,
+  strict = true,
 }: {
   apiKey: string;
   schemaName: string;
   jsonSchema: Record<string, unknown>;
   validator: z.ZodType<T>;
   prompt: string;
+  strict?: boolean;
 }) {
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
@@ -266,7 +273,7 @@ async function callOpenAiJson<T>({
         format: {
           type: "json_schema",
           name: schemaName,
-          strict: true,
+          strict,
           schema: jsonSchema,
         },
       },
@@ -275,13 +282,33 @@ async function callOpenAiJson<T>({
 
   if (!response.ok) {
     const message = await response.text();
+    console.error("OpenAI response error", {
+      schemaName,
+      status: response.status,
+      body: truncateForLogs(message),
+    });
     throw new Error(`OpenAI request failed: ${message}`);
   }
 
   const payload = await response.json();
-  const outputText = payload.output_text;
+  const refusal = extractResponseRefusal(payload);
+  if (refusal) {
+    console.error("OpenAI structured output refusal", {
+      schemaName,
+      refusal: truncateForLogs(refusal),
+      responseId: payload.id ?? null,
+    });
+    throw new Error(`OpenAI refused the request: ${refusal}`);
+  }
+
+  const outputText = extractResponseOutputText(payload);
 
   if (!outputText) {
+    console.error("OpenAI returned no structured output text", {
+      schemaName,
+      responseId: payload.id ?? null,
+      output: payload.output ?? null,
+    });
     throw new Error("OpenAI returned no structured output.");
   }
 
@@ -301,6 +328,86 @@ function jsonResponse(body: Record<string, unknown>, status = 200) {
       "Content-Type": "application/json",
     },
   });
+}
+
+function extractResponseOutputText(payload: Record<string, unknown>) {
+  const direct = payload.output_text;
+  if (typeof direct === "string" && direct.trim().length > 0) {
+    return direct;
+  }
+
+  const output = payload.output;
+  if (!Array.isArray(output)) {
+    return null;
+  }
+
+  for (const item of output) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      continue;
+    }
+
+    const content = (item as Record<string, unknown>).content;
+    if (!Array.isArray(content)) {
+      continue;
+    }
+
+    for (const part of content) {
+      if (!part || typeof part !== "object" || Array.isArray(part)) {
+        continue;
+      }
+
+      const record = part as Record<string, unknown>;
+      const text = record.text ?? record.output_text;
+      if (typeof text === "string" && text.trim().length > 0) {
+        return text;
+      }
+    }
+  }
+
+  return null;
+}
+
+function extractResponseRefusal(payload: Record<string, unknown>) {
+  const output = payload.output;
+  if (!Array.isArray(output)) {
+    return null;
+  }
+
+  for (const item of output) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      continue;
+    }
+
+    const content = (item as Record<string, unknown>).content;
+    if (!Array.isArray(content)) {
+      continue;
+    }
+
+    for (const part of content) {
+      if (!part || typeof part !== "object" || Array.isArray(part)) {
+        continue;
+      }
+
+      const record = part as Record<string, unknown>;
+      if (
+        record.type === "refusal" &&
+        typeof record.refusal === "string" &&
+        record.refusal.trim().length > 0
+      ) {
+        return record.refusal;
+      }
+    }
+  }
+
+  return null;
+}
+
+function truncateForLogs(value: string, maxLength = 800) {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  return `${value.slice(0, maxLength)}...`;
 }
 
 const openQuestionJsonSchema = {
