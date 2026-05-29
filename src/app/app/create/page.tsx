@@ -6,7 +6,6 @@ import {
   generateProgramPlanAction,
   prepareApprovalRequestAction,
   reviewApprovalRequestAction,
-  sendCreateAgentMessageAction,
 } from "@/app/app/create/actions";
 import {
   getAgentCreateWorkspaceData,
@@ -15,6 +14,7 @@ import {
   getProgramAccessRows,
 } from "@/lib/supabase/queries";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { CreateMessageComposer } from "@/app/app/create/_components/create-message-composer";
 
 type CreatePageProps = {
   searchParams?: Promise<{
@@ -386,7 +386,29 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
           ) : null}
           {params.status && statusCopy[params.status] ? (
             <div className="mx-auto mb-5 max-w-[580px] rounded-lg border border-[#3a6e9e40] bg-[#3a6e9e1a] px-4 py-3 text-[12px] text-[#c4d8ec]">
-              {statusCopy[params.status]}
+              <div>{statusCopy[params.status]}</div>
+              {activeSessionId && params.status === "brief-ready" ? (
+                <div className="mt-3">
+                  <Link
+                    href={`/app/create/${activeSessionId}/brief`}
+                    className="inline-flex items-center gap-2 rounded-md border border-[#84b1d640] px-3 py-2 text-[11.5px] font-medium text-[#d9e7f4] transition hover:bg-[#84b1d614]"
+                  >
+                    Review brief
+                    <ArrowRightIcon />
+                  </Link>
+                </div>
+              ) : null}
+              {activeSessionId && params.status === "plan-generated" ? (
+                <div className="mt-3">
+                  <Link
+                    href={`/app/create/${activeSessionId}/plan`}
+                    className="inline-flex items-center gap-2 rounded-md border border-[#84b1d640] px-3 py-2 text-[11.5px] font-medium text-[#d9e7f4] transition hover:bg-[#84b1d614]"
+                  >
+                    Review plan
+                    <ArrowRightIcon />
+                  </Link>
+                </div>
+              ) : null}
             </div>
           ) : null}
           {params.prompt ? (
@@ -576,37 +598,11 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
               </div>
             ) : null}
 
-            <form action={sendCreateAgentMessageAction}>
-              <input type="hidden" name="workspaceId" value={selectedWorkspace.workspaceId} />
-              {activeSessionId ? (
-                <input type="hidden" name="sessionId" value={activeSessionId} />
-              ) : null}
-              <div className="flex items-end gap-2 rounded-xl border border-white/10 bg-[#0a1422] px-4 py-3">
-                <textarea
-                  name="message"
-                  defaultValue={params.prompt ?? ""}
-                  required
-                  minLength={8}
-                  rows={4}
-                  placeholder="Describe the program you want to build - type, scope, timeline, requirements... e.g. 'Run a global employee hackathon for APAC and Europe, teams of 4, registration next Monday, six week sprint, two judging rounds, sponsor-safe report required.'"
-                  className="min-h-[110px] flex-1 resize-none bg-transparent text-[13px] leading-6 text-[#eae5dc] outline-none placeholder:text-[#5e7088]"
-                />
-                <div className="flex shrink-0 items-center gap-2">
-                  <button
-                    type="button"
-                    className="flex h-8 w-8 items-center justify-center rounded-md text-[#5e7088] transition hover:bg-white/[0.03] hover:text-[#9baabf]"
-                  >
-                    <PaperclipIcon />
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex h-[30px] w-[30px] items-center justify-center rounded-md bg-[#b08a28] text-[#06100f] transition hover:bg-[#ccaa4a]"
-                  >
-                    <SendIcon />
-                  </button>
-                </div>
-              </div>
-            </form>
+            <CreateMessageComposer
+              workspaceId={selectedWorkspace.workspaceId}
+              sessionId={activeSessionId}
+              defaultMessage={params.prompt ?? ""}
+            />
           </div>
         </div>
       </div>
@@ -807,7 +803,7 @@ function DocumentIcon() {
   );
 }
 
-function PaperclipIcon() {
+function ArrowRightIcon() {
   return (
     <svg
       width="14"
@@ -815,31 +811,12 @@ function PaperclipIcon() {
       viewBox="0 0 16 16"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.5"
+      strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden
     >
-      <path d="m13.5 7.5-6 6a3.5 3.5 0 0 1-5-5l7-7a2.3 2.3 0 0 1 3.3 3.3l-7 7a1.2 1.2 0 0 1-1.7-1.7l6-6" />
-    </svg>
-  );
-}
-
-function SendIcon() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M14 2 1 7l5 3 2 5 6-13Z" />
-      <path d="m6 10 3-3" />
+      <path d="M3 8h10M9 4l4 4-4 4" />
     </svg>
   );
 }
