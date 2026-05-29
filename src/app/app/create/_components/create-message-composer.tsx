@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useFormStatus } from "react-dom";
 import { sendCreateAgentMessageAction } from "@/app/app/create/actions";
 
@@ -12,45 +13,69 @@ export function CreateMessageComposer({
   sessionId?: string | null;
   defaultMessage?: string;
 }) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   return (
-    <form action={sendCreateAgentMessageAction}>
+    <form
+      key={`composer-form-${sessionId ?? "new"}-${defaultMessage ?? ""}`}
+      action={sendCreateAgentMessageAction}
+      onSubmit={() => {
+        setIsSubmitting(true);
+      }}
+    >
       <input type="hidden" name="workspaceId" value={workspaceId} />
       {sessionId ? <input type="hidden" name="sessionId" value={sessionId} /> : null}
-      <div className="flex items-end gap-2 rounded-xl border border-white/10 bg-[#0a1422] px-4 py-3">
-        <textarea
-          key={`composer-${sessionId ?? "new"}-${defaultMessage ?? ""}`}
-          name="message"
-          defaultValue={defaultMessage ?? ""}
-          required
-          minLength={8}
-          rows={4}
-          placeholder="Describe the program you want to build - type, scope, timeline, requirements... e.g. 'Run a global employee hackathon for APAC and Europe, teams of 4, registration next Monday, six week sprint, two judging rounds, sponsor-safe report required.'"
-          className="min-h-[110px] flex-1 resize-none bg-transparent text-[13px] leading-6 text-[#eae5dc] outline-none placeholder:text-[#5e7088]"
-        />
-        <ComposerActions />
+      <div className="rounded-xl border border-white/10 bg-[#0a1422] px-4 py-3">
+        <div className="flex items-end gap-2">
+          <textarea
+            key={`composer-${sessionId ?? "new"}-${defaultMessage ?? ""}`}
+            name="message"
+            defaultValue={defaultMessage ?? ""}
+            required
+            minLength={8}
+            rows={4}
+            placeholder="Describe the program you want to build - type, scope, timeline, requirements... e.g. 'Run a global employee hackathon for APAC and Europe, teams of 4, registration next Monday, six week sprint, two judging rounds, sponsor-safe report required.'"
+            className="min-h-[110px] flex-1 resize-none bg-transparent text-[13px] leading-6 text-[#eae5dc] outline-none placeholder:text-[#5e7088]"
+          />
+          <ComposerActions isSubmitting={isSubmitting} />
+        </div>
+        {isSubmitting ? (
+          <div
+            aria-live="polite"
+            className="mt-3 flex items-center gap-2 rounded-lg border border-[#b08a2838] bg-[#b08a2810] px-3 py-2 text-[11.5px] text-[#e4d8b4]"
+          >
+            <SpinnerIcon />
+            Innova is drafting the next program state. This can take a few seconds.
+          </div>
+        ) : (
+          <div className="mt-3 text-[11px] text-[#5e7088]">
+            Generate creates or updates the governed brief first, then you review before moving to plan and approvals.
+          </div>
+        )}
       </div>
     </form>
   );
 }
 
-function ComposerActions() {
+function ComposerActions({ isSubmitting }: { isSubmitting: boolean }) {
   const { pending } = useFormStatus();
+  const busy = pending || isSubmitting;
 
   return (
     <div className="flex shrink-0 items-center gap-2">
       <button
         type="button"
-        disabled={pending}
+        disabled={busy}
         className="flex h-8 w-8 items-center justify-center rounded-md text-[#5e7088] transition hover:bg-white/[0.03] hover:text-[#9baabf] disabled:cursor-not-allowed disabled:opacity-40"
       >
         <PaperclipIcon />
       </button>
       <button
         type="submit"
-        disabled={pending}
+        disabled={busy}
         className="flex min-w-[104px] items-center justify-center gap-2 rounded-md bg-[#b08a28] px-3 py-2 text-[11.5px] font-semibold text-[#06100f] transition hover:bg-[#ccaa4a] disabled:cursor-not-allowed disabled:opacity-70"
       >
-        {pending ? (
+        {busy ? (
           <>
             <SpinnerIcon />
             Generating...

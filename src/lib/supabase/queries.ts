@@ -1143,6 +1143,31 @@ export type AgentMessageSummary = {
   createdAt: string;
 };
 
+export type AgentRunSummary = {
+  id: string;
+  runType: Database["public"]["Enums"]["agent_run_type"];
+  status: Database["public"]["Enums"]["agent_run_status"];
+  goalText: string | null;
+  summary: string | null;
+  currentTaskId: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+};
+
+export type AgentEventSummary = {
+  id: string;
+  runId: string | null;
+  taskId: string | null;
+  toolCallId: string | null;
+  eventType: Database["public"]["Enums"]["agent_event_type"];
+  severity: Database["public"]["Enums"]["agent_event_severity"];
+  title: string;
+  body: string | null;
+  eventPayload: Database["public"]["Tables"]["agent_events"]["Row"]["event_payload"];
+  createdAt: string;
+};
+
 export type ProgramBriefSummary = {
   id: string;
   organizationId: string | null;
@@ -1246,6 +1271,8 @@ export type AgentCreateWorkspaceData = {
   selectedWorkspace: WorkspaceAccessRow | null;
   sessions: AgentSessionSummary[];
   activeSession: AgentSessionSummary | null;
+  runs: AgentRunSummary[];
+  events: AgentEventSummary[];
   messages: AgentMessageSummary[];
   brief: ProgramBriefSummary | null;
   plan: ProgramPlanSummary | null;
@@ -1388,6 +1415,8 @@ export async function getAgentCreateWorkspaceData(
       selectedWorkspace: null,
       sessions: [],
       activeSession: null,
+      runs: [],
+      events: [],
       messages: [],
       brief: null,
       plan: null,
@@ -1469,6 +1498,8 @@ export async function getAgentCreateWorkspaceData(
       selectedWorkspace,
       sessions: mappedSessions,
       activeSession: null,
+      runs: [],
+      events: [],
       messages: [],
       brief: null,
       plan: null,
@@ -1498,12 +1529,68 @@ export async function getAgentCreateWorkspaceData(
     createdAt: message.created_at,
   })) satisfies AgentMessageSummary[];
 
+  const [{ data: runRows, error: runsError }, { data: eventRows, error: eventsError }] =
+    await Promise.all([
+      supabase
+        .from("agent_runs")
+        .select(
+          "id, run_type, status, goal_text, summary, current_task_id, started_at, completed_at, created_at",
+        )
+        .eq("session_id", activeSession.id)
+        .order("created_at", { ascending: false })
+        .limit(8),
+      supabase
+        .from("agent_events")
+        .select(
+          "id, run_id, task_id, tool_call_id, event_type, severity, title, body, event_payload, created_at",
+        )
+        .eq("session_id", activeSession.id)
+        .eq("visible_to_user", true)
+        .order("created_at", { ascending: false })
+        .limit(20),
+    ]);
+
+  if (runsError) {
+    throw runsError;
+  }
+
+  if (eventsError) {
+    throw eventsError;
+  }
+
+  const runs = (runRows ?? []).map((run) => ({
+    id: run.id,
+    runType: run.run_type,
+    status: run.status,
+    goalText: run.goal_text,
+    summary: run.summary,
+    currentTaskId: run.current_task_id,
+    startedAt: run.started_at,
+    completedAt: run.completed_at,
+    createdAt: run.created_at,
+  })) satisfies AgentRunSummary[];
+
+  const events = (eventRows ?? []).map((event) => ({
+    id: event.id,
+    runId: event.run_id,
+    taskId: event.task_id,
+    toolCallId: event.tool_call_id,
+    eventType: event.event_type,
+    severity: event.severity,
+    title: event.title,
+    body: event.body,
+    eventPayload: event.event_payload,
+    createdAt: event.created_at,
+  })) satisfies AgentEventSummary[];
+
   if (!activeSession.briefId) {
     return {
       workspaces,
       selectedWorkspace,
       sessions: mappedSessions,
       activeSession,
+      runs,
+      events,
       messages,
       brief: null,
       plan: null,
@@ -1532,6 +1619,8 @@ export async function getAgentCreateWorkspaceData(
       selectedWorkspace,
       sessions: mappedSessions,
       activeSession,
+      runs,
+      events,
       messages,
       brief: null,
       plan: null,
@@ -1700,6 +1789,8 @@ export async function getAgentCreateWorkspaceData(
     selectedWorkspace,
     sessions: mappedSessions,
     activeSession,
+    runs,
+    events,
     messages,
     brief,
     plan,

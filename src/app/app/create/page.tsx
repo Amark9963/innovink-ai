@@ -417,6 +417,91 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
             </div>
           ) : null}
 
+          {data.runs.length > 0 ? (
+            <div className="mx-auto mb-6 max-w-[860px] rounded-xl border border-white/7 bg-[#101a2c] p-5">
+              <div className="mb-2 text-[12px] font-semibold uppercase tracking-[0.08em] text-[#ccaa4a]">
+                Agent runtime
+              </div>
+              <div className="text-[18px] font-semibold tracking-[-0.02em] text-[#eae5dc]">
+                Active PM workspace trace
+              </div>
+              <p className="mt-2 max-w-[720px] text-[12.5px] leading-6 text-[#9baabf]">
+                This workspace now records runs, events, and tool activity behind each PM instruction so the agent state is visible instead of implicit.
+              </p>
+              <div className="mt-4 grid gap-4 lg:grid-cols-[1.05fr_1.35fr]">
+                <div className="space-y-3">
+                  {data.runs.slice(0, 3).map((run) => (
+                    <article
+                      key={run.id}
+                      className="rounded-lg border border-white/7 bg-[#162034] px-4 py-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-[12.5px] font-semibold text-[#eae5dc]">
+                            {humanizeRunType(run.runType)}
+                          </div>
+                          <div className="mt-1 text-[10.5px] uppercase tracking-[0.08em] text-[#5e7088]">
+                            {run.id.slice(0, 8)} · {run.status}
+                          </div>
+                        </div>
+                        <span className="rounded-sm border border-white/10 bg-white/[0.03] px-2 py-1 text-[9px] uppercase tracking-[0.08em] text-[#9baabf]">
+                          {formatDateTime(run.createdAt)}
+                        </span>
+                      </div>
+                      {run.summary ? (
+                        <p className="mt-3 text-[11.5px] leading-5 text-[#c4d0df]">
+                          {run.summary}
+                        </p>
+                      ) : null}
+                      {run.goalText ? (
+                        <p className="mt-3 line-clamp-3 text-[11px] leading-5 text-[#7f90a6]">
+                          {run.goalText}
+                        </p>
+                      ) : null}
+                    </article>
+                  ))}
+                </div>
+                <div className="rounded-lg border border-white/7 bg-[#162034] p-4">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div className="text-[12.5px] font-semibold text-[#eae5dc]">
+                      Recent runtime events
+                    </div>
+                    <div className="text-[10.5px] uppercase tracking-[0.08em] text-[#5e7088]">
+                      Latest visible events
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    {data.events.slice(0, 8).map((event) => (
+                      <div
+                        key={event.id}
+                        className="rounded-lg border border-white/7 bg-[#1b2840] px-3 py-3"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-[11.5px] font-semibold text-[#eae5dc]">
+                              {event.title}
+                            </div>
+                            <div className="mt-1 text-[10px] uppercase tracking-[0.08em] text-[#5e7088]">
+                              {event.eventType} · {event.severity}
+                            </div>
+                          </div>
+                          <div className="text-[10px] text-[#7f90a6]">
+                            {formatDateTime(event.createdAt)}
+                          </div>
+                        </div>
+                        {event.body ? (
+                          <p className="mt-2 text-[11px] leading-5 text-[#9baabf]">
+                            {event.body}
+                          </p>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           {isFirstRun ? (
             <div className="mx-auto mb-6 max-w-[860px] rounded-xl border border-[#b08a2838] bg-[#162034] p-5">
               <div className="mb-2 text-[12px] font-semibold uppercase tracking-[0.08em] text-[#ccaa4a]">
@@ -840,4 +925,11 @@ function formatDateTime(value: string | null) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
+}
+
+function humanizeRunType(value: string) {
+  return value
+    .split("_")
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(" ");
 }

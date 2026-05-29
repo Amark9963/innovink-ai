@@ -7,6 +7,17 @@ import {
   generateProgramBriefDraft,
   generateProgramPlanDraft,
 } from "@/lib/ai/program-agent";
+import {
+  completeAgentToolCall,
+  createAgentRun,
+  createAgentRunTask,
+  recordAgentEvent,
+  recordAgentToolCall,
+  registerAgentArtifact,
+  updateAgentRunStatus,
+  updateAgentTaskStatus,
+  upsertAgentMemory,
+} from "@/lib/agent-runtime/runtime";
 import { executePmWorkspacePlanStep } from "@/lib/execution/pm-workspace";
 import type { Json } from "@/lib/supabase/database.types";
 import {
@@ -75,6 +86,27 @@ function buildCreateRoute({
 
 function toJson(value: unknown): Json {
   return JSON.parse(JSON.stringify(value)) as Json;
+}
+
+function determineBriefRunType(currentBrief: Json) {
+  if (
+    currentBrief &&
+    typeof currentBrief === "object" &&
+    !Array.isArray(currentBrief) &&
+    Object.keys(currentBrief as Record<string, unknown>).length > 0
+  ) {
+    return "brief_revision" as const;
+  }
+
+  return "program_bootstrap" as const;
+}
+
+async function runBestEffort(task: () => Promise<void>) {
+  try {
+    await task();
+  } catch (error) {
+    console.error("Non-blocking agent runtime trace failure", error);
+  }
 }
 
 async function insertAssistantErrorMessage(
@@ -422,6 +454,162 @@ export async function sendCreateAgentMessageAction(formData: FormData) {
     );
   }
 
+  let agentRunId: string | null = null;
+  let draftBriefTaskId: string | null = null;
+  let validateBriefTaskId: string | null = null;
+  let updateMemoryTaskId: string | null = null;
+  let draftBriefToolCallId: string | null = null;
+  const draftBriefToolStartedAt = new Date();
+
+  await runBestEffort(async () => {
+    const run = await createAgentRun(supabase, {
+      sessionId,
+      briefId,
+      organizationId,
+      workspaceId: selectedWorkspace.workspaceId,
+      programId,
+      runType: determineBriefRunType(briefRow.current_brief),
+      goalText: parsed.data.message,
+      userInstruction: parsed.data.message,
+      startedBy: user.id,
+      plannerModel: "pm_workspace_v1",
+      executorModel: "generate-program-agent-draft",
+      runInput: {
+        workspaceName: selectedWorkspace.workspaceName,
+        organizationName: selectedWorkspace.organizationName,
+        existingBriefState: briefRow.status,
+      },
+    });
+    agentRunId = run.id;
+
+    await updateAgentRunStatus(supabase, {
+      runId: run.id,
+      status: "planning",
+      summary: "Inspecting workspace context and planning the next PM agent steps.",
+    });
+
+    await recordAgentEvent(supabase, {
+      sessionId,
+      runId: run.id,
+      organizationId,
+      workspaceId: selectedWorkspace.workspaceId,
+      programId,
+      eventType: "run_started",
+      title: "PM agent run started",
+      body: "Innova started a new workspace run from the latest program instruction.",
+      eventPayload: {
+        runType: run.run_type,
+      },
+    });
+
+    await createAgentRunTask(supabase, {
+      runId: run.id,
+      taskType: "inspect_context",
+      title: "Inspect workspace and current brief context",
+      description: "Load the workspace, brief, conversation, and current PM instruction before drafting.",
+      displayOrder: 10,
+      status: "completed",
+      inputPayload: {
+        workspaceId: selectedWorkspace.workspaceId,
+        briefId,
+      },
+    });
+
+    const draftTask = await createAgentRunTask(supabase, {
+      runId: run.id,
+      taskType: "draft_brief",
+      title: "Draft the structured brief",
+      description: "Generate the next brief revision from the current PM instruction and workspace context.",
+      displayOrder: 20,
+      inputPayload: {
+        latestUserMessage: parsed.data.message,
+      },
+    });
+    draftBriefTaskId = draftTask.id;
+
+    const validateTask = await createAgentRunTask(supabase, {
+      runId: run.id,
+      taskType: "validate_output",
+      title: "Validate the generated brief",
+      description: "Validate the returned structured brief and readiness state.",
+      displayOrder: 30,
+    });
+    validateBriefTaskId = validateTask.id;
+
+    const memoryTask = await createAgentRunTask(supabase, {
+      runId: run.id,
+      taskType: "update_memory",
+      title: "Persist the distilled session memory",
+      description: "Store the important conclusions and unresolved questions for later runs.",
+      displayOrder: 40,
+    });
+    updateMemoryTaskId = memoryTask.id;
+
+    await updateAgentRunStatus(supabase, {
+      runId: run.id,
+      status: "running",
+      currentTaskId: draftTask.id,
+      summary: "Drafting the structured brief from the latest PM instruction.",
+    });
+
+    await updateAgentTaskStatus(supabase, {
+      taskId: draftTask.id,
+      status: "running",
+      started: true,
+    });
+
+    await recordAgentEvent(supabase, {
+      sessionId,
+      runId: run.id,
+      taskId: draftTask.id,
+      organizationId,
+      workspaceId: selectedWorkspace.workspaceId,
+      programId,
+      eventType: "run_planned",
+      title: "Run planned",
+      body: "Innova prepared the initial task sequence for this PM workspace run.",
+      eventPayload: {
+        taskTypes: [
+          "inspect_context",
+          "draft_brief",
+          "validate_output",
+          "update_memory",
+        ],
+      },
+    });
+
+    const toolCall = await recordAgentToolCall(supabase, {
+      runId: run.id,
+      taskId: draftTask.id,
+      sessionId,
+      organizationId,
+      workspaceId: selectedWorkspace.workspaceId,
+      programId,
+      toolName: "draft_program_brief",
+      inputPayload: {
+        briefId,
+        latestUserMessage: parsed.data.message,
+      },
+    });
+    draftBriefToolCallId = toolCall.id;
+
+    await recordAgentEvent(supabase, {
+      sessionId,
+      runId: run.id,
+      taskId: draftTask.id,
+      toolCallId: toolCall.id,
+      organizationId,
+      workspaceId: selectedWorkspace.workspaceId,
+      programId,
+      eventType: "tool_call_started",
+      title: "Drafting the structured brief",
+      body: "Innova is generating the next structured brief revision.",
+      eventPayload: {
+        toolName: "draft_program_brief",
+      },
+    });
+  });
+
   const aiRequestId = await createAiRequestLog({
     featureKey: "pm_agent_brief_generation",
     requestedBy: user.id,
@@ -558,6 +746,224 @@ export async function sendCreateAgentMessageAction(formData: FormData) {
           (briefDraft.usage?.output_tokens ?? 0)),
     });
 
+    await runBestEffort(async () => {
+      if (draftBriefToolCallId) {
+        await completeAgentToolCall(supabase, {
+          toolCallId: draftBriefToolCallId,
+          status: "completed",
+          outputPayload: {
+            briefStatus: briefDraft.result.status,
+            confidenceLevel: briefDraft.result.confidenceLevel,
+            briefTitle: briefDraft.result.briefTitle,
+            openQuestionCount: briefDraft.result.openQuestions.length,
+          },
+          startedAt: draftBriefToolStartedAt,
+        });
+
+        await recordAgentEvent(supabase, {
+          sessionId,
+          runId: agentRunId,
+          taskId: draftBriefTaskId,
+          toolCallId: draftBriefToolCallId,
+          organizationId,
+          workspaceId: selectedWorkspace.workspaceId,
+          programId,
+          eventType: "tool_call_completed",
+          title: "Brief drafting completed",
+          body: "Innova completed the structured brief drafting step.",
+          eventPayload: {
+            briefStatus: briefDraft.result.status,
+            confidenceLevel: briefDraft.result.confidenceLevel,
+          },
+        });
+      }
+
+      if (draftBriefTaskId) {
+        await updateAgentTaskStatus(supabase, {
+          taskId: draftBriefTaskId,
+          status: "completed",
+          completed: true,
+          outputPayload: {
+            briefStatus: briefDraft.result.status,
+            activeVersionId: versionRow.id,
+          },
+        });
+      }
+
+      if (validateBriefTaskId) {
+        await updateAgentTaskStatus(supabase, {
+          taskId: validateBriefTaskId,
+          status: "completed",
+          started: true,
+          completed: true,
+          outputPayload: {
+            readyForPlan: briefDraft.result.status === "ready_for_plan",
+            confidenceLevel: briefDraft.result.confidenceLevel,
+            openQuestionCount: briefDraft.result.openQuestions.length,
+          },
+        });
+      }
+
+      const artifactId = await registerAgentArtifact(supabase, {
+        sessionId,
+        runId: agentRunId,
+        taskId: draftBriefTaskId,
+        organizationId,
+        workspaceId: selectedWorkspace.workspaceId,
+        programId,
+        artifactType: "brief",
+        status: briefDraft.result.openQuestions.length > 0 ? "draft" : "ready_for_review",
+        sourceTable: "program_brief_versions",
+        sourceId: versionRow.id,
+        versionLabel: `v${nextVersion}`,
+        title: briefDraft.result.briefTitle,
+        summary: briefDraft.result.assistantMessage,
+        artifactPayload: {
+          confidenceLevel: briefDraft.result.confidenceLevel,
+          briefStatus: briefDraft.result.status,
+        },
+        createdByRunId: agentRunId,
+      });
+
+      await recordAgentEvent(supabase, {
+        sessionId,
+        runId: agentRunId,
+        taskId: draftBriefTaskId,
+        toolCallId: draftBriefToolCallId,
+        organizationId,
+        workspaceId: selectedWorkspace.workspaceId,
+        programId,
+        eventType: "artifact_updated",
+        title: "Structured brief updated",
+        body:
+          briefDraft.result.status === "ready_for_plan"
+            ? "The brief is ready for planning."
+            : "The brief was updated and still needs clarification before planning.",
+        eventPayload: {
+          artifactId,
+          briefVersionId: versionRow.id,
+          briefStatus: briefDraft.result.status,
+        },
+      });
+
+      const summaryMemoryId = await upsertAgentMemory(supabase, {
+        sessionId,
+        organizationId,
+        workspaceId: selectedWorkspace.workspaceId,
+        programId,
+        artifactType: "brief",
+        artifactSourceTable: "program_briefs",
+        artifactSourceId: briefId,
+        memoryScope: "session",
+        memoryKey: "pm_workspace_brief_summary",
+        summary: briefDraft.result.assistantMessage,
+        memoryPayload: {
+          briefTitle: briefDraft.result.briefTitle,
+          briefStatus: briefDraft.result.status,
+          confidenceLevel: briefDraft.result.confidenceLevel,
+          assumptions: briefDraft.result.assumptions,
+        },
+        confidence: briefDraft.result.confidenceLevel === "high" ? "high" : "medium",
+        sourceType: "tool_output",
+        sourceRunId: agentRunId,
+      });
+
+      const questionMemoryId = await upsertAgentMemory(supabase, {
+        sessionId,
+        organizationId,
+        workspaceId: selectedWorkspace.workspaceId,
+        programId,
+        artifactType: "brief",
+        artifactSourceTable: "program_briefs",
+        artifactSourceId: briefId,
+        memoryScope: "session",
+        memoryKey: "pm_workspace_open_questions",
+        summary:
+          briefDraft.result.openQuestions.length > 0
+            ? "The PM workspace still has unresolved questions before the next stage."
+            : "The PM workspace currently has no material unresolved questions.",
+        memoryPayload: {
+          openQuestions: briefDraft.result.openQuestions,
+        },
+        confidence: "medium",
+        sourceType: "tool_output",
+        sourceRunId: agentRunId,
+      });
+
+      if (updateMemoryTaskId) {
+        await updateAgentTaskStatus(supabase, {
+          taskId: updateMemoryTaskId,
+          status: "completed",
+          started: true,
+          completed: true,
+          outputPayload: {
+            summaryMemoryId,
+            questionMemoryId,
+          },
+        });
+      }
+
+      await recordAgentEvent(supabase, {
+        sessionId,
+        runId: agentRunId,
+        taskId: updateMemoryTaskId,
+        organizationId,
+        workspaceId: selectedWorkspace.workspaceId,
+        programId,
+        eventType: "memory_updated",
+        title: "Workspace memory updated",
+        body: "Innova stored the current brief summary and unresolved questions for later runs.",
+        eventPayload: {
+          summaryMemoryId,
+          questionMemoryId,
+        },
+      });
+
+      if (agentRunId) {
+        await updateAgentRunStatus(supabase, {
+          runId: agentRunId,
+          status:
+            briefDraft.result.openQuestions.length > 0
+              ? "waiting_for_input"
+              : "completed",
+          currentTaskId: updateMemoryTaskId,
+          summary:
+            briefDraft.result.openQuestions.length > 0
+              ? "The brief draft is ready, and Innova is waiting for PM clarification on the remaining questions."
+              : "The brief draft is complete and ready for the planning stage.",
+          runOutput: {
+            briefId,
+            briefVersionId: versionRow.id,
+            briefStatus: briefDraft.result.status,
+          },
+          completed: briefDraft.result.openQuestions.length === 0,
+        });
+      }
+
+      await recordAgentEvent(supabase, {
+        sessionId,
+        runId: agentRunId,
+        taskId: updateMemoryTaskId,
+        organizationId,
+        workspaceId: selectedWorkspace.workspaceId,
+        programId,
+        eventType:
+          briefDraft.result.openQuestions.length > 0 ? "needs_input" : "run_completed",
+        title:
+          briefDraft.result.openQuestions.length > 0
+            ? "PM clarification needed"
+            : "Brief run completed",
+        body:
+          briefDraft.result.openQuestions.length > 0
+            ? "Innova needs clarification on the remaining brief questions before moving cleanly into plan generation."
+            : "Innova completed the brief run and the workspace is ready for planning.",
+        eventPayload: {
+          openQuestionCount: briefDraft.result.openQuestions.length,
+          briefStatus: briefDraft.result.status,
+        },
+      });
+    });
+
     revalidatePath("/app/create");
     redirect(
       buildCreateRoute({
@@ -580,6 +986,78 @@ export async function sendCreateAgentMessageAction(formData: FormData) {
       workspaceId: selectedWorkspace.workspaceId,
       organizationId,
       programId,
+    });
+
+    await runBestEffort(async () => {
+      if (draftBriefToolCallId) {
+        await completeAgentToolCall(supabase, {
+          toolCallId: draftBriefToolCallId,
+          status: "failed",
+          errorPayload: {
+            message: error instanceof Error ? error.message : "Unknown AI failure.",
+          },
+          startedAt: draftBriefToolStartedAt,
+        });
+
+        await recordAgentEvent(supabase, {
+          sessionId,
+          runId: agentRunId,
+          taskId: draftBriefTaskId,
+          toolCallId: draftBriefToolCallId,
+          organizationId,
+          workspaceId: selectedWorkspace.workspaceId,
+          programId,
+          eventType: "tool_call_failed",
+          severity: "warning",
+          title: "Brief drafting failed",
+          body: "The PM agent could not complete the brief drafting step.",
+          eventPayload: {
+            error: error instanceof Error ? error.message : "Unknown AI failure.",
+          },
+        });
+      }
+
+      if (draftBriefTaskId) {
+        await updateAgentTaskStatus(supabase, {
+          taskId: draftBriefTaskId,
+          status: "failed",
+          completed: true,
+          errorPayload: {
+            message: error instanceof Error ? error.message : "Unknown AI failure.",
+          },
+        });
+      }
+
+      if (agentRunId) {
+        await updateAgentRunStatus(supabase, {
+          runId: agentRunId,
+          status: "failed",
+          currentTaskId: draftBriefTaskId,
+          summary: "The PM brief drafting run failed before the brief could be updated.",
+          errorPayload: {
+            message: error instanceof Error ? error.message : "Unknown AI failure.",
+          },
+          completed: true,
+        });
+
+        await recordAgentEvent(supabase, {
+          sessionId,
+          runId: agentRunId,
+          taskId: draftBriefTaskId,
+          toolCallId: draftBriefToolCallId,
+          organizationId,
+          workspaceId: selectedWorkspace.workspaceId,
+          programId,
+          eventType: "run_failed",
+          severity: "warning",
+          title: "Brief run failed",
+          body:
+            "Innova could not update the program brief from the latest instruction. The workspace state is preserved for retry.",
+          eventPayload: {
+            error: error instanceof Error ? error.message : "Unknown AI failure.",
+          },
+        });
+      }
     });
 
     await insertAssistantErrorMessage(
@@ -683,6 +1161,164 @@ export async function generateProgramPlanAction(formData: FormData) {
         brief_id: briefRow.id,
         brief_title: briefTitle,
       }),
+  });
+
+  let agentRunId: string | null = null;
+  let draftPlanTaskId: string | null = null;
+  let validatePlanTaskId: string | null = null;
+  let updateMemoryTaskId: string | null = null;
+  let draftPlanToolCallId: string | null = null;
+  const draftPlanToolStartedAt = new Date();
+
+  await runBestEffort(async () => {
+    const run = await createAgentRun(supabase, {
+      sessionId: session.id,
+      briefId: briefRow.id,
+      organizationId: briefRow.organization_id,
+      workspaceId: briefRow.workspace_id,
+      programId: briefRow.program_id,
+      runType: "plan_generation",
+      goalText: `Generate a governed execution plan for ${briefTitle}`,
+      userInstruction: `Generate a governed execution plan for ${briefTitle}`,
+      startedBy: user.id,
+      plannerModel: "pm_workspace_v1",
+      executorModel: "generate-program-agent-draft",
+      runInput: {
+        briefId: briefRow.id,
+        briefTitle,
+        detectedProgramType: briefRow.detected_program_type,
+      },
+    });
+    agentRunId = run.id;
+
+    await updateAgentRunStatus(supabase, {
+      runId: run.id,
+      status: "planning",
+      summary: "Inspecting the approved brief context and planning the execution-plan run.",
+    });
+
+    await recordAgentEvent(supabase, {
+      sessionId: session.id,
+      runId: run.id,
+      organizationId: briefRow.organization_id,
+      workspaceId: briefRow.workspace_id,
+      programId: briefRow.program_id,
+      eventType: "run_started",
+      title: "Plan run started",
+      body: "Innova started a new plan-generation run from the latest brief state.",
+      eventPayload: {
+        runType: run.run_type,
+        briefId: briefRow.id,
+      },
+    });
+
+    await createAgentRunTask(supabase, {
+      runId: run.id,
+      taskType: "inspect_context",
+      title: "Inspect the brief and workspace context",
+      description: "Load the current brief, assumptions, and open questions before drafting the plan.",
+      displayOrder: 10,
+      status: "completed",
+      inputPayload: {
+        briefId: briefRow.id,
+        briefTitle,
+      },
+    });
+
+    const draftTask = await createAgentRunTask(supabase, {
+      runId: run.id,
+      taskType: "draft_plan",
+      title: "Draft the governed execution plan",
+      description: "Generate the next execution plan from the current brief and workspace context.",
+      displayOrder: 20,
+      inputPayload: {
+        briefId: briefRow.id,
+        briefTitle,
+      },
+    });
+    draftPlanTaskId = draftTask.id;
+
+    const validateTask = await createAgentRunTask(supabase, {
+      runId: run.id,
+      taskType: "validate_output",
+      title: "Validate the generated plan",
+      description: "Validate the returned plan structure, approval gates, and execution readiness.",
+      displayOrder: 30,
+    });
+    validatePlanTaskId = validateTask.id;
+
+    const memoryTask = await createAgentRunTask(supabase, {
+      runId: run.id,
+      taskType: "update_memory",
+      title: "Persist the distilled planning memory",
+      description: "Store the important plan summary and approval requirements for later runs.",
+      displayOrder: 40,
+    });
+    updateMemoryTaskId = memoryTask.id;
+
+    await updateAgentRunStatus(supabase, {
+      runId: run.id,
+      status: "running",
+      currentTaskId: draftTask.id,
+      summary: "Drafting the governed execution plan from the current brief.",
+    });
+
+    await updateAgentTaskStatus(supabase, {
+      taskId: draftTask.id,
+      status: "running",
+      started: true,
+    });
+
+    await recordAgentEvent(supabase, {
+      sessionId: session.id,
+      runId: run.id,
+      taskId: draftTask.id,
+      organizationId: briefRow.organization_id,
+      workspaceId: briefRow.workspace_id,
+      programId: briefRow.program_id,
+      eventType: "run_planned",
+      title: "Plan run planned",
+      body: "Innova prepared the task sequence for the plan-generation run.",
+      eventPayload: {
+        taskTypes: [
+          "inspect_context",
+          "draft_plan",
+          "validate_output",
+          "update_memory",
+        ],
+      },
+    });
+
+    const toolCall = await recordAgentToolCall(supabase, {
+      runId: run.id,
+      taskId: draftTask.id,
+      sessionId: session.id,
+      organizationId: briefRow.organization_id,
+      workspaceId: briefRow.workspace_id,
+      programId: briefRow.program_id,
+      toolName: "draft_program_plan",
+      inputPayload: {
+        briefId: briefRow.id,
+        briefTitle,
+      },
+    });
+    draftPlanToolCallId = toolCall.id;
+
+    await recordAgentEvent(supabase, {
+      sessionId: session.id,
+      runId: run.id,
+      taskId: draftTask.id,
+      toolCallId: toolCall.id,
+      organizationId: briefRow.organization_id,
+      workspaceId: briefRow.workspace_id,
+      programId: briefRow.program_id,
+      eventType: "tool_call_started",
+      title: "Drafting the execution plan",
+      body: "Innova is generating the governed execution plan.",
+      eventPayload: {
+        toolName: "draft_program_plan",
+      },
+    });
   });
 
   try {
@@ -801,6 +1437,209 @@ export async function generateProgramPlanAction(formData: FormData) {
           (planDraft.usage?.output_tokens ?? 0)),
     });
 
+    await runBestEffort(async () => {
+      if (draftPlanToolCallId) {
+        await completeAgentToolCall(supabase, {
+          toolCallId: draftPlanToolCallId,
+          status: "completed",
+          outputPayload: {
+            planStatus: planDraft.result.status,
+            planTitle: planDraft.result.planTitle,
+            itemCount: planDraft.result.items.length,
+            approvalRequirementCount: planDraft.result.approvalRequirements.length,
+          },
+          startedAt: draftPlanToolStartedAt,
+        });
+
+        await recordAgentEvent(supabase, {
+          sessionId: session.id,
+          runId: agentRunId,
+          taskId: draftPlanTaskId,
+          toolCallId: draftPlanToolCallId,
+          organizationId: briefRow.organization_id,
+          workspaceId: briefRow.workspace_id,
+          programId: briefRow.program_id,
+          eventType: "tool_call_completed",
+          title: "Plan drafting completed",
+          body: "Innova completed the governed execution-plan drafting step.",
+          eventPayload: {
+            planStatus: planDraft.result.status,
+            itemCount: planDraft.result.items.length,
+          },
+        });
+      }
+
+      if (draftPlanTaskId) {
+        await updateAgentTaskStatus(supabase, {
+          taskId: draftPlanTaskId,
+          status: "completed",
+          completed: true,
+          outputPayload: {
+            planId: planRow.id,
+            planStatus: planDraft.result.status,
+          },
+        });
+      }
+
+      if (validatePlanTaskId) {
+        await updateAgentTaskStatus(supabase, {
+          taskId: validatePlanTaskId,
+          status: "completed",
+          started: true,
+          completed: true,
+          outputPayload: {
+            itemCount: planDraft.result.items.length,
+            approvalRequirementCount: planDraft.result.approvalRequirements.length,
+            readyForApprovalPacket:
+              planDraft.result.approvalRequirements.length > 0,
+          },
+        });
+      }
+
+      const artifactId = await registerAgentArtifact(supabase, {
+        sessionId: session.id,
+        runId: agentRunId,
+        taskId: draftPlanTaskId,
+        organizationId: briefRow.organization_id,
+        workspaceId: briefRow.workspace_id,
+        programId: briefRow.program_id,
+        artifactType: "plan",
+        status: "ready_for_review",
+        sourceTable: "program_plans",
+        sourceId: planRow.id,
+        versionLabel: "v1",
+        title: planDraft.result.planTitle,
+        summary: planDraft.result.planSummary,
+        artifactPayload: {
+          planStatus: planDraft.result.status,
+          itemCount: planDraft.result.items.length,
+        },
+        createdByRunId: agentRunId,
+      });
+
+      await recordAgentEvent(supabase, {
+        sessionId: session.id,
+        runId: agentRunId,
+        taskId: draftPlanTaskId,
+        toolCallId: draftPlanToolCallId,
+        organizationId: briefRow.organization_id,
+        workspaceId: briefRow.workspace_id,
+        programId: briefRow.program_id,
+        eventType: "artifact_updated",
+        title: "Execution plan updated",
+        body: "The governed execution plan is ready for PM review.",
+        eventPayload: {
+          artifactId,
+          planId: planRow.id,
+          planStatus: planDraft.result.status,
+        },
+      });
+
+      const summaryMemoryId = await upsertAgentMemory(supabase, {
+        sessionId: session.id,
+        organizationId: briefRow.organization_id,
+        workspaceId: briefRow.workspace_id,
+        programId: briefRow.program_id,
+        artifactType: "plan",
+        artifactSourceTable: "program_plans",
+        artifactSourceId: planRow.id,
+        memoryScope: "session",
+        memoryKey: "pm_workspace_plan_summary",
+        summary: planDraft.result.planSummary,
+        memoryPayload: {
+          planTitle: planDraft.result.planTitle,
+          planStatus: planDraft.result.status,
+          itemCount: planDraft.result.items.length,
+        },
+        confidence: "high",
+        sourceType: "tool_output",
+        sourceRunId: agentRunId,
+      });
+
+      const approvalsMemoryId = await upsertAgentMemory(supabase, {
+        sessionId: session.id,
+        organizationId: briefRow.organization_id,
+        workspaceId: briefRow.workspace_id,
+        programId: briefRow.program_id,
+        artifactType: "plan",
+        artifactSourceTable: "program_plans",
+        artifactSourceId: planRow.id,
+        memoryScope: "session",
+        memoryKey: "pm_workspace_plan_approval_requirements",
+        summary:
+          planDraft.result.approvalRequirements.length > 0
+            ? "The execution plan contains approval-gated requirements before deterministic execution."
+            : "The execution plan currently has no explicit approval-gated requirements.",
+        memoryPayload: {
+          approvalRequirements: planDraft.result.approvalRequirements,
+        },
+        confidence: "high",
+        sourceType: "tool_output",
+        sourceRunId: agentRunId,
+      });
+
+      if (updateMemoryTaskId) {
+        await updateAgentTaskStatus(supabase, {
+          taskId: updateMemoryTaskId,
+          status: "completed",
+          started: true,
+          completed: true,
+          outputPayload: {
+            summaryMemoryId,
+            approvalsMemoryId,
+          },
+        });
+      }
+
+      await recordAgentEvent(supabase, {
+        sessionId: session.id,
+        runId: agentRunId,
+        taskId: updateMemoryTaskId,
+        organizationId: briefRow.organization_id,
+        workspaceId: briefRow.workspace_id,
+        programId: briefRow.program_id,
+        eventType: "memory_updated",
+        title: "Plan memory updated",
+        body: "Innova stored the current plan summary and approval requirements for later runs.",
+        eventPayload: {
+          summaryMemoryId,
+          approvalsMemoryId,
+        },
+      });
+
+      if (agentRunId) {
+        await updateAgentRunStatus(supabase, {
+          runId: agentRunId,
+          status: "completed",
+          currentTaskId: updateMemoryTaskId,
+          summary:
+            "The plan run is complete and the governed execution plan is ready for PM review.",
+          runOutput: {
+            planId: planRow.id,
+            planStatus: planDraft.result.status,
+            itemCount: planDraft.result.items.length,
+          },
+          completed: true,
+        });
+      }
+
+      await recordAgentEvent(supabase, {
+        sessionId: session.id,
+        runId: agentRunId,
+        taskId: updateMemoryTaskId,
+        organizationId: briefRow.organization_id,
+        workspaceId: briefRow.workspace_id,
+        programId: briefRow.program_id,
+        eventType: "run_completed",
+        title: "Plan run completed",
+        body: "Innova completed the plan run and the workspace is ready for plan review.",
+        eventPayload: {
+          planId: planRow.id,
+          approvalRequirementCount: planDraft.result.approvalRequirements.length,
+        },
+      });
+    });
+
     revalidatePath("/app/create");
     if (parsed.data.redirectTo === "plan") {
       redirect(`/app/create/${session.id}/plan`);
@@ -824,6 +1663,79 @@ export async function generateProgramPlanAction(formData: FormData) {
       workspaceId: briefRow.workspace_id,
       organizationId: briefRow.organization_id,
       programId: briefRow.program_id,
+    });
+
+    await runBestEffort(async () => {
+      if (draftPlanToolCallId) {
+        await completeAgentToolCall(supabase, {
+          toolCallId: draftPlanToolCallId,
+          status: "failed",
+          errorPayload: {
+            message: error instanceof Error ? error.message : "Unknown AI failure.",
+          },
+          startedAt: draftPlanToolStartedAt,
+        });
+
+        await recordAgentEvent(supabase, {
+          sessionId: session.id,
+          runId: agentRunId,
+          taskId: draftPlanTaskId,
+          toolCallId: draftPlanToolCallId,
+          organizationId: briefRow.organization_id,
+          workspaceId: briefRow.workspace_id,
+          programId: briefRow.program_id,
+          eventType: "tool_call_failed",
+          severity: "warning",
+          title: "Plan drafting failed",
+          body: "The PM agent could not complete the plan drafting step.",
+          eventPayload: {
+            error: error instanceof Error ? error.message : "Unknown AI failure.",
+          },
+        });
+      }
+
+      if (draftPlanTaskId) {
+        await updateAgentTaskStatus(supabase, {
+          taskId: draftPlanTaskId,
+          status: "failed",
+          completed: true,
+          errorPayload: {
+            message: error instanceof Error ? error.message : "Unknown AI failure.",
+          },
+        });
+      }
+
+      if (agentRunId) {
+        await updateAgentRunStatus(supabase, {
+          runId: agentRunId,
+          status: "failed",
+          currentTaskId: draftPlanTaskId,
+          summary:
+            "The plan run failed before the governed execution plan could be updated.",
+          errorPayload: {
+            message: error instanceof Error ? error.message : "Unknown AI failure.",
+          },
+          completed: true,
+        });
+
+        await recordAgentEvent(supabase, {
+          sessionId: session.id,
+          runId: agentRunId,
+          taskId: draftPlanTaskId,
+          toolCallId: draftPlanToolCallId,
+          organizationId: briefRow.organization_id,
+          workspaceId: briefRow.workspace_id,
+          programId: briefRow.program_id,
+          eventType: "run_failed",
+          severity: "warning",
+          title: "Plan run failed",
+          body:
+            "Innova could not generate the execution plan from the current brief. The workspace state is preserved for retry.",
+          eventPayload: {
+            error: error instanceof Error ? error.message : "Unknown AI failure.",
+          },
+        });
+      }
     });
 
     await insertAssistantErrorMessage(

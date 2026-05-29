@@ -366,6 +366,822 @@ export type Database = {
           },
         ]
       }
+      agent_runs: {
+        Row: {
+          approval_request_id: string | null
+          brief_id: string | null
+          cancelled_at: string | null
+          completed_at: string | null
+          created_at: string
+          current_task_id: string | null
+          error_payload: Json
+          execution_run_id: string | null
+          executor_model: string | null
+          goal_text: string | null
+          id: string
+          organization_id: string | null
+          plan_id: string | null
+          planner_model: string | null
+          program_id: string | null
+          run_input: Json
+          run_output: Json
+          run_type: Database["public"]["Enums"]["agent_run_type"]
+          session_id: string
+          started_at: string | null
+          started_by: string
+          status: Database["public"]["Enums"]["agent_run_status"]
+          summary: string | null
+          updated_at: string
+          user_instruction: string | null
+          workspace_id: string
+        }
+        Insert: {
+          approval_request_id?: string | null
+          brief_id?: string | null
+          cancelled_at?: string | null
+          completed_at?: string | null
+          created_at?: string
+          current_task_id?: string | null
+          error_payload?: Json
+          execution_run_id?: string | null
+          executor_model?: string | null
+          goal_text?: string | null
+          id?: string
+          organization_id?: string | null
+          plan_id?: string | null
+          planner_model?: string | null
+          program_id?: string | null
+          run_input?: Json
+          run_output?: Json
+          run_type: Database["public"]["Enums"]["agent_run_type"]
+          session_id: string
+          started_at?: string | null
+          started_by: string
+          status?: Database["public"]["Enums"]["agent_run_status"]
+          summary?: string | null
+          updated_at?: string
+          user_instruction?: string | null
+          workspace_id: string
+        }
+        Update: {
+          approval_request_id?: string | null
+          brief_id?: string | null
+          cancelled_at?: string | null
+          completed_at?: string | null
+          created_at?: string
+          current_task_id?: string | null
+          error_payload?: Json
+          execution_run_id?: string | null
+          executor_model?: string | null
+          goal_text?: string | null
+          id?: string
+          organization_id?: string | null
+          plan_id?: string | null
+          planner_model?: string | null
+          program_id?: string | null
+          run_input?: Json
+          run_output?: Json
+          run_type?: Database["public"]["Enums"]["agent_run_type"]
+          session_id?: string
+          started_at?: string | null
+          started_by?: string
+          status?: Database["public"]["Enums"]["agent_run_status"]
+          summary?: string | null
+          updated_at?: string
+          user_instruction?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_runs_approval_request_id_fkey"
+            columns: ["approval_request_id"]
+            isOneToOne: false
+            referencedRelation: "approval_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_runs_brief_id_fkey"
+            columns: ["brief_id"]
+            isOneToOne: false
+            referencedRelation: "program_briefs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_runs_current_task_fk"
+            columns: ["current_task_id"]
+            isOneToOne: false
+            referencedRelation: "agent_run_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_runs_execution_run_id_fkey"
+            columns: ["execution_run_id"]
+            isOneToOne: false
+            referencedRelation: "execution_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_runs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_runs_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "program_plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_runs_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "programs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_runs_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "agent_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_runs_started_by_fkey"
+            columns: ["started_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_runs_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_run_tasks: {
+        Row: {
+          approval_required: boolean
+          blocking: boolean
+          completed_at: string | null
+          created_at: string
+          description: string | null
+          display_order: number
+          error_payload: Json
+          id: string
+          input_payload: Json
+          output_payload: Json
+          parent_task_id: string | null
+          priority: number
+          run_id: string
+          started_at: string | null
+          status: Database["public"]["Enums"]["agent_task_status"]
+          task_type: Database["public"]["Enums"]["agent_task_type"]
+          title: string
+          updated_at: string
+          waiting_reason: string | null
+        }
+        Insert: {
+          approval_required?: boolean
+          blocking?: boolean
+          completed_at?: string | null
+          created_at?: string
+          description?: string | null
+          display_order?: number
+          error_payload?: Json
+          id?: string
+          input_payload?: Json
+          output_payload?: Json
+          parent_task_id?: string | null
+          priority?: number
+          run_id: string
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["agent_task_status"]
+          task_type: Database["public"]["Enums"]["agent_task_type"]
+          title: string
+          updated_at?: string
+          waiting_reason?: string | null
+        }
+        Update: {
+          approval_required?: boolean
+          blocking?: boolean
+          completed_at?: string | null
+          created_at?: string
+          description?: string | null
+          display_order?: number
+          error_payload?: Json
+          id?: string
+          input_payload?: Json
+          output_payload?: Json
+          parent_task_id?: string | null
+          priority?: number
+          run_id?: string
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["agent_task_status"]
+          task_type?: Database["public"]["Enums"]["agent_task_type"]
+          title?: string
+          updated_at?: string
+          waiting_reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_run_tasks_parent_task_id_fkey"
+            columns: ["parent_task_id"]
+            isOneToOne: false
+            referencedRelation: "agent_run_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_run_tasks_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "agent_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_tool_calls: {
+        Row: {
+          approval_required: boolean
+          completed_at: string | null
+          created_at: string
+          error_payload: Json
+          executor_type: string
+          id: string
+          input_payload: Json
+          latency_ms: number | null
+          organization_id: string | null
+          output_payload: Json
+          program_id: string | null
+          risk_level: Database["public"]["Enums"]["agent_tool_risk_level"]
+          run_id: string
+          session_id: string
+          started_at: string | null
+          status: Database["public"]["Enums"]["agent_tool_call_status"]
+          task_id: string | null
+          tool_name: string
+          tool_version: string | null
+          workspace_id: string
+        }
+        Insert: {
+          approval_required?: boolean
+          completed_at?: string | null
+          created_at?: string
+          error_payload?: Json
+          executor_type: string
+          id?: string
+          input_payload?: Json
+          latency_ms?: number | null
+          organization_id?: string | null
+          output_payload?: Json
+          program_id?: string | null
+          risk_level?: Database["public"]["Enums"]["agent_tool_risk_level"]
+          run_id: string
+          session_id: string
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["agent_tool_call_status"]
+          task_id?: string | null
+          tool_name: string
+          tool_version?: string | null
+          workspace_id: string
+        }
+        Update: {
+          approval_required?: boolean
+          completed_at?: string | null
+          created_at?: string
+          error_payload?: Json
+          executor_type?: string
+          id?: string
+          input_payload?: Json
+          latency_ms?: number | null
+          organization_id?: string | null
+          output_payload?: Json
+          program_id?: string | null
+          risk_level?: Database["public"]["Enums"]["agent_tool_risk_level"]
+          run_id?: string
+          session_id?: string
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["agent_tool_call_status"]
+          task_id?: string | null
+          tool_name?: string
+          tool_version?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_tool_calls_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_tool_calls_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "programs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_tool_calls_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "agent_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_tool_calls_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "agent_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_tool_calls_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "agent_run_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_tool_calls_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_events: {
+        Row: {
+          body: string | null
+          created_at: string
+          event_payload: Json
+          event_type: Database["public"]["Enums"]["agent_event_type"]
+          id: string
+          organization_id: string | null
+          program_id: string | null
+          run_id: string | null
+          session_id: string
+          severity: Database["public"]["Enums"]["agent_event_severity"]
+          task_id: string | null
+          title: string
+          tool_call_id: string | null
+          visible_to_user: boolean
+          workspace_id: string
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string
+          event_payload?: Json
+          event_type: Database["public"]["Enums"]["agent_event_type"]
+          id?: string
+          organization_id?: string | null
+          program_id?: string | null
+          run_id?: string | null
+          session_id: string
+          severity?: Database["public"]["Enums"]["agent_event_severity"]
+          task_id?: string | null
+          title: string
+          tool_call_id?: string | null
+          visible_to_user?: boolean
+          workspace_id: string
+        }
+        Update: {
+          body?: string | null
+          created_at?: string
+          event_payload?: Json
+          event_type?: Database["public"]["Enums"]["agent_event_type"]
+          id?: string
+          organization_id?: string | null
+          program_id?: string | null
+          run_id?: string | null
+          session_id?: string
+          severity?: Database["public"]["Enums"]["agent_event_severity"]
+          task_id?: string | null
+          title?: string
+          tool_call_id?: string | null
+          visible_to_user?: boolean
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_events_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "programs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_events_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "agent_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_events_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "agent_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_events_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "agent_run_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_events_tool_call_id_fkey"
+            columns: ["tool_call_id"]
+            isOneToOne: false
+            referencedRelation: "agent_tool_calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_events_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_memories: {
+        Row: {
+          artifact_source_id: string | null
+          artifact_source_table: string | null
+          artifact_type: Database["public"]["Enums"]["agent_artifact_type"] | null
+          confidence: Database["public"]["Enums"]["agent_memory_confidence"]
+          created_at: string
+          expires_at: string | null
+          id: string
+          is_active: boolean
+          memory_key: string
+          memory_payload: Json
+          memory_scope: Database["public"]["Enums"]["agent_memory_scope"]
+          organization_id: string | null
+          program_id: string | null
+          session_id: string | null
+          source_event_id: string | null
+          source_run_id: string | null
+          source_type: Database["public"]["Enums"]["agent_memory_source_type"]
+          summary: string
+          superseded_by: string | null
+          updated_at: string
+          workspace_id: string | null
+        }
+        Insert: {
+          artifact_source_id?: string | null
+          artifact_source_table?: string | null
+          artifact_type?: Database["public"]["Enums"]["agent_artifact_type"] | null
+          confidence?: Database["public"]["Enums"]["agent_memory_confidence"]
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean
+          memory_key: string
+          memory_payload?: Json
+          memory_scope: Database["public"]["Enums"]["agent_memory_scope"]
+          organization_id?: string | null
+          program_id?: string | null
+          session_id?: string | null
+          source_event_id?: string | null
+          source_run_id?: string | null
+          source_type: Database["public"]["Enums"]["agent_memory_source_type"]
+          summary: string
+          superseded_by?: string | null
+          updated_at?: string
+          workspace_id?: string | null
+        }
+        Update: {
+          artifact_source_id?: string | null
+          artifact_source_table?: string | null
+          artifact_type?: Database["public"]["Enums"]["agent_artifact_type"] | null
+          confidence?: Database["public"]["Enums"]["agent_memory_confidence"]
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean
+          memory_key?: string
+          memory_payload?: Json
+          memory_scope?: Database["public"]["Enums"]["agent_memory_scope"]
+          organization_id?: string | null
+          program_id?: string | null
+          session_id?: string | null
+          source_event_id?: string | null
+          source_run_id?: string | null
+          source_type?: Database["public"]["Enums"]["agent_memory_source_type"]
+          summary?: string
+          superseded_by?: string | null
+          updated_at?: string
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_memories_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_memories_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "programs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_memories_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "agent_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_memories_source_event_id_fkey"
+            columns: ["source_event_id"]
+            isOneToOne: false
+            referencedRelation: "agent_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_memories_source_run_id_fkey"
+            columns: ["source_run_id"]
+            isOneToOne: false
+            referencedRelation: "agent_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_memories_superseded_by_fkey"
+            columns: ["superseded_by"]
+            isOneToOne: false
+            referencedRelation: "agent_memories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_memories_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_artifacts: {
+        Row: {
+          approved_at: string | null
+          artifact_payload: Json
+          artifact_type: Database["public"]["Enums"]["agent_artifact_type"]
+          created_at: string
+          created_by_run_id: string | null
+          executed_at: string | null
+          id: string
+          organization_id: string | null
+          program_id: string | null
+          run_id: string | null
+          session_id: string
+          source_id: string
+          source_table: string
+          status: Database["public"]["Enums"]["agent_artifact_status"]
+          summary: string | null
+          task_id: string | null
+          title: string | null
+          updated_at: string
+          version_label: string | null
+          workspace_id: string
+        }
+        Insert: {
+          approved_at?: string | null
+          artifact_payload?: Json
+          artifact_type: Database["public"]["Enums"]["agent_artifact_type"]
+          created_at?: string
+          created_by_run_id?: string | null
+          executed_at?: string | null
+          id?: string
+          organization_id?: string | null
+          program_id?: string | null
+          run_id?: string | null
+          session_id: string
+          source_id: string
+          source_table: string
+          status?: Database["public"]["Enums"]["agent_artifact_status"]
+          summary?: string | null
+          task_id?: string | null
+          title?: string | null
+          updated_at?: string
+          version_label?: string | null
+          workspace_id: string
+        }
+        Update: {
+          approved_at?: string | null
+          artifact_payload?: Json
+          artifact_type?: Database["public"]["Enums"]["agent_artifact_type"]
+          created_at?: string
+          created_by_run_id?: string | null
+          executed_at?: string | null
+          id?: string
+          organization_id?: string | null
+          program_id?: string | null
+          run_id?: string | null
+          session_id?: string
+          source_id?: string
+          source_table?: string
+          status?: Database["public"]["Enums"]["agent_artifact_status"]
+          summary?: string | null
+          task_id?: string | null
+          title?: string | null
+          updated_at?: string
+          version_label?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_artifacts_created_by_run_id_fkey"
+            columns: ["created_by_run_id"]
+            isOneToOne: false
+            referencedRelation: "agent_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_artifacts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_artifacts_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "programs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_artifacts_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "agent_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_artifacts_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "agent_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_artifacts_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "agent_run_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_artifacts_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_approval_checkpoints: {
+        Row: {
+          approval_request_id: string | null
+          checkpoint_payload: Json
+          checkpoint_type: Database["public"]["Enums"]["agent_checkpoint_type"]
+          created_at: string
+          description: string | null
+          id: string
+          organization_id: string | null
+          program_id: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          risk_level: Database["public"]["Enums"]["agent_tool_risk_level"]
+          run_id: string
+          session_id: string
+          status: Database["public"]["Enums"]["agent_checkpoint_status"]
+          task_id: string | null
+          title: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          approval_request_id?: string | null
+          checkpoint_payload?: Json
+          checkpoint_type: Database["public"]["Enums"]["agent_checkpoint_type"]
+          created_at?: string
+          description?: string | null
+          id?: string
+          organization_id?: string | null
+          program_id?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          risk_level: Database["public"]["Enums"]["agent_tool_risk_level"]
+          run_id: string
+          session_id: string
+          status?: Database["public"]["Enums"]["agent_checkpoint_status"]
+          task_id?: string | null
+          title: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          approval_request_id?: string | null
+          checkpoint_payload?: Json
+          checkpoint_type?: Database["public"]["Enums"]["agent_checkpoint_type"]
+          created_at?: string
+          description?: string | null
+          id?: string
+          organization_id?: string | null
+          program_id?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          risk_level?: Database["public"]["Enums"]["agent_tool_risk_level"]
+          run_id?: string
+          session_id?: string
+          status?: Database["public"]["Enums"]["agent_checkpoint_status"]
+          task_id?: string | null
+          title?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_approval_checkpoints_approval_request_id_fkey"
+            columns: ["approval_request_id"]
+            isOneToOne: false
+            referencedRelation: "approval_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_approval_checkpoints_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_approval_checkpoints_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "programs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_approval_checkpoints_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_approval_checkpoints_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "agent_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_approval_checkpoints_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "agent_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_approval_checkpoints_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "agent_run_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_approval_checkpoints_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_feature_configs: {
         Row: {
           created_at: string
@@ -8772,6 +9588,125 @@ export type Database = {
         | "tool_trace"
       agent_message_role: "user" | "assistant" | "system" | "tool"
       agent_session_status: "active" | "paused" | "completed" | "archived"
+      agent_run_type:
+        | "program_bootstrap"
+        | "brief_revision"
+        | "plan_generation"
+        | "launch_kit_generation"
+        | "approval_preparation"
+        | "execution_readiness_review"
+        | "operational_analysis"
+        | "live_ops_intervention"
+        | "artifact_regeneration"
+        | "conversation_followup"
+      agent_run_status:
+        | "queued"
+        | "planning"
+        | "running"
+        | "waiting_for_input"
+        | "waiting_for_approval"
+        | "blocked"
+        | "completed"
+        | "failed"
+        | "cancelled"
+      agent_task_type:
+        | "inspect_context"
+        | "retrieve_domain_state"
+        | "update_memory"
+        | "draft_brief"
+        | "draft_plan"
+        | "draft_asset"
+        | "validate_output"
+        | "identify_open_questions"
+        | "summarize_risks"
+        | "prepare_approval_checkpoint"
+        | "prepare_execution_package"
+        | "emit_recommendation"
+        | "analyze_operational_health"
+        | "human_followup"
+      agent_task_status:
+        | "pending"
+        | "running"
+        | "waiting_for_input"
+        | "waiting_for_approval"
+        | "blocked"
+        | "completed"
+        | "failed"
+        | "cancelled"
+      agent_tool_risk_level: "low" | "medium" | "high"
+      agent_tool_call_status:
+        | "queued"
+        | "running"
+        | "completed"
+        | "failed"
+        | "skipped"
+        | "cancelled"
+      agent_event_type:
+        | "run_started"
+        | "run_planned"
+        | "run_status_changed"
+        | "task_started"
+        | "task_completed"
+        | "task_failed"
+        | "tool_call_started"
+        | "tool_call_completed"
+        | "tool_call_failed"
+        | "artifact_updated"
+        | "memory_updated"
+        | "needs_input"
+        | "needs_approval"
+        | "approval_resolved"
+        | "execution_started"
+        | "execution_completed"
+        | "execution_failed"
+        | "recommendation_created"
+        | "run_completed"
+        | "run_failed"
+      agent_event_severity: "info" | "warning" | "critical"
+      agent_memory_scope:
+        | "session"
+        | "program"
+        | "workspace"
+        | "organization"
+        | "artifact"
+        | "decision"
+      agent_memory_confidence: "low" | "medium" | "high"
+      agent_memory_source_type:
+        | "human_input"
+        | "agent_inference"
+        | "tool_output"
+        | "approved_decision"
+        | "derived_summary"
+        | "system_sync"
+      agent_artifact_type:
+        | "brief"
+        | "plan"
+        | "landing_page"
+        | "registration_form"
+        | "submission_form"
+        | "judging_setup"
+        | "communications_pack"
+        | "mentor_setup"
+        | "sponsor_report"
+        | "launch_readiness"
+        | "operations_summary"
+        | "approval_packet"
+        | "execution_package"
+      agent_artifact_status:
+        | "draft"
+        | "ready_for_review"
+        | "approved"
+        | "rejected"
+        | "executed"
+        | "superseded"
+        | "archived"
+      agent_checkpoint_type:
+        | "approval_request"
+        | "clarification_request"
+        | "publish_gate"
+        | "execution_gate"
+        | "policy_gate"
+      agent_checkpoint_status: "open" | "resolved" | "rejected" | "cancelled"
       ai_approval_mode: "always_require" | "policy_based" | "not_required"
       ai_review_status: "pending" | "approved" | "rejected"
       ai_risk_level: "low" | "medium" | "high"
@@ -9337,6 +10272,136 @@ export const Constants = {
       ],
       agent_message_role: ["user", "assistant", "system", "tool"],
       agent_session_status: ["active", "paused", "completed", "archived"],
+      agent_run_type: [
+        "program_bootstrap",
+        "brief_revision",
+        "plan_generation",
+        "launch_kit_generation",
+        "approval_preparation",
+        "execution_readiness_review",
+        "operational_analysis",
+        "live_ops_intervention",
+        "artifact_regeneration",
+        "conversation_followup",
+      ],
+      agent_run_status: [
+        "queued",
+        "planning",
+        "running",
+        "waiting_for_input",
+        "waiting_for_approval",
+        "blocked",
+        "completed",
+        "failed",
+        "cancelled",
+      ],
+      agent_task_type: [
+        "inspect_context",
+        "retrieve_domain_state",
+        "update_memory",
+        "draft_brief",
+        "draft_plan",
+        "draft_asset",
+        "validate_output",
+        "identify_open_questions",
+        "summarize_risks",
+        "prepare_approval_checkpoint",
+        "prepare_execution_package",
+        "emit_recommendation",
+        "analyze_operational_health",
+        "human_followup",
+      ],
+      agent_task_status: [
+        "pending",
+        "running",
+        "waiting_for_input",
+        "waiting_for_approval",
+        "blocked",
+        "completed",
+        "failed",
+        "cancelled",
+      ],
+      agent_tool_risk_level: ["low", "medium", "high"],
+      agent_tool_call_status: [
+        "queued",
+        "running",
+        "completed",
+        "failed",
+        "skipped",
+        "cancelled",
+      ],
+      agent_event_type: [
+        "run_started",
+        "run_planned",
+        "run_status_changed",
+        "task_started",
+        "task_completed",
+        "task_failed",
+        "tool_call_started",
+        "tool_call_completed",
+        "tool_call_failed",
+        "artifact_updated",
+        "memory_updated",
+        "needs_input",
+        "needs_approval",
+        "approval_resolved",
+        "execution_started",
+        "execution_completed",
+        "execution_failed",
+        "recommendation_created",
+        "run_completed",
+        "run_failed",
+      ],
+      agent_event_severity: ["info", "warning", "critical"],
+      agent_memory_scope: [
+        "session",
+        "program",
+        "workspace",
+        "organization",
+        "artifact",
+        "decision",
+      ],
+      agent_memory_confidence: ["low", "medium", "high"],
+      agent_memory_source_type: [
+        "human_input",
+        "agent_inference",
+        "tool_output",
+        "approved_decision",
+        "derived_summary",
+        "system_sync",
+      ],
+      agent_artifact_type: [
+        "brief",
+        "plan",
+        "landing_page",
+        "registration_form",
+        "submission_form",
+        "judging_setup",
+        "communications_pack",
+        "mentor_setup",
+        "sponsor_report",
+        "launch_readiness",
+        "operations_summary",
+        "approval_packet",
+        "execution_package",
+      ],
+      agent_artifact_status: [
+        "draft",
+        "ready_for_review",
+        "approved",
+        "rejected",
+        "executed",
+        "superseded",
+        "archived",
+      ],
+      agent_checkpoint_type: [
+        "approval_request",
+        "clarification_request",
+        "publish_gate",
+        "execution_gate",
+        "policy_gate",
+      ],
+      agent_checkpoint_status: ["open", "resolved", "rejected", "cancelled"],
       ai_approval_mode: ["always_require", "policy_based", "not_required"],
       ai_review_status: ["pending", "approved", "rejected"],
       ai_risk_level: ["low", "medium", "high"],
