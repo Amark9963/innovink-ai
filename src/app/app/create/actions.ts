@@ -7,6 +7,7 @@ import {
   generateProgramBriefDraft,
   generateProgramPlanDraft,
 } from "@/lib/ai/program-agent";
+import { buildLaunchKitAssetDrafts } from "@/lib/ai/program-launch-kit";
 import {
   completeAgentToolCall,
   createAgentRun,
@@ -53,6 +54,12 @@ const executeSchema = z.object({
   sessionId: z.uuid(),
   approvalRequestId: z.uuid(),
   redirectTo: z.enum(["create", "execution"]).optional(),
+});
+
+const refineLandingPageAssetSchema = z.object({
+  sessionId: z.uuid(),
+  assetKey: z.string().trim().min(1).max(120),
+  instruction: z.string().trim().min(8).max(2000),
 });
 
 function buildCreateRoute({
@@ -283,6 +290,40 @@ async function persistPlannerStateMemory(params: {
   };
 }
 
+async function resolveUniqueProgramSlug(params: {
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
+  workspaceId: string;
+  name: string;
+}) {
+  const baseSlug = ensureSlugOrThrow(params.name, "Program slug");
+  const { data, error } = await params.supabase
+    .from("programs")
+    .select("slug")
+    .eq("workspace_id", params.workspaceId)
+    .ilike("slug", `${baseSlug}%`);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const existingSlugs = new Set(
+    (data ?? [])
+      .map((row) => row.slug?.toString().toLowerCase().trim())
+      .filter((slug): slug is string => Boolean(slug)),
+  );
+
+  if (!existingSlugs.has(baseSlug)) {
+    return baseSlug;
+  }
+
+  let suffix = 2;
+  while (existingSlugs.has(`${baseSlug}-${suffix}`)) {
+    suffix += 1;
+  }
+
+  return `${baseSlug}-${suffix}`;
+}
+
 async function createAiRequestLog(params: {
   featureKey: string;
   requestedBy: string;
@@ -355,6 +396,31 @@ async function finalizeAiRequestLog(params: {
       program_id: params.programId,
     });
   }
+}
+
+function buildAssetDetailRouteWithStatus(params: {
+  sessionId: string;
+  assetKey: string;
+  status?: string | null;
+  error?: string | null;
+  tab?: "preview" | "edit" | "history";
+}) {
+  const search = new URLSearchParams();
+
+  if (params.tab && params.tab !== "preview") {
+    search.set("tab", params.tab);
+  }
+
+  if (params.status) {
+    search.set("status", params.status);
+  }
+
+  if (params.error) {
+    search.set("error", params.error);
+  }
+
+  const query = search.toString();
+  return `/app/create/${params.sessionId}/assets/${params.assetKey}${query ? `?${query}` : ""}`;
 }
 
 export async function sendCreateAgentMessageAction(formData: FormData) {
@@ -553,6 +619,7 @@ export async function sendCreateAgentMessageAction(formData: FormData) {
 
   let agentRunId: string | null = null;
   let draftBriefTaskId: string | null = null;
+  let draftAssetTaskId: string | null = null;
   let validateBriefTaskId: string | null = null;
   let updateMemoryTaskId: string | null = null;
   let recommendationTaskId: string | null = null;
@@ -632,6 +699,10 @@ export async function sendCreateAgentMessageAction(formData: FormData) {
         draftBriefTaskId = task.id;
       }
 
+      if (taskBlueprint.taskType === "draft_asset") {
+        draftAssetTaskId = task.id;
+      }
+
       if (taskBlueprint.taskType === "validate_output") {
         validateBriefTaskId = task.id;
       }
@@ -709,6 +780,329 @@ export async function sendCreateAgentMessageAction(formData: FormData) {
       });
     }
   });
+
+  if (plannerDecision.shouldGenerateAssets) {
+    if (!briefRow.active_plan_id) {
+      redirect(
+        buildCreateRoute({
+          sessionId,
+          workspaceId: selectedWorkspace.workspaceId,
+          error:
+            "A generated execution plan is required before launch assets can be drafted.",
+        }),
+      );
+    }
+
+    const { data: planRow, error: planError } = await supabase
+      .from("program_plans")
+      .select("id, title, summary")
+      .eq("id", briefRow.active_plan_id)
+      .single();
+
+    if (planError || !planRow) {
+      redirect(
+        buildCreateRoute({
+          sessionId,
+          workspaceId: selectedWorkspace.workspaceId,
+          error: planError?.message ?? "Unable to load the current execution plan.",
+        }),
+      );
+    }
+
+    const { drafts, targets } = buildLaunchKitAssetDrafts({
+      message: parsed.data.message,
+      brief: {
+        title: briefRow.title,
+        detectedProgramType: briefRow.detected_program_type,
+        currentBrief:
+          (briefRow.current_brief as Record<string, unknown> | null) ?? null,
+      },
+      plan: {
+        title: planRow.title,
+        summary: planRow.summary,
+      },
+    });
+
+    if (drafts.length === 0) {
+      redirect(
+        buildCreateRoute({
+          sessionId,
+          workspaceId: selectedWorkspace.workspaceId,
+          error:
+            "Ask for a landing page, registration form, submission form, judging setup, or the full launch kit.",
+        }),
+      );
+    }
+
+    const toolNameByArtifact = {
+      landing_page: "draft_landing_page",
+      registration_form: "draft_registration_form",
+      submission_form: "draft_submission_form",
+      judging_setup: "draft_judging_setup",
+    } as const;
+
+    const assistantMessage = `I generated ${drafts.length === 1 ? "the requested launch asset" : "the requested launch assets"} from the current brief and execution plan.\n\n${drafts.map((draft) => `- ${draft.title}: ${draft.summary}`).join("\n")}\n\nReview the drafts in the assets workspace, refine anything that needs adjustment, and then move into the governed approval packet.`;
+
+    const { data: assistantMessageRow, error: assistantMessageError } =
+      await supabase
+        .from("agent_messages")
+        .insert({
+          session_id: sessionId,
+          brief_id: briefId,
+          plan_id: planRow.id,
+          role: "assistant",
+          kind: "chat",
+          content_text: assistantMessage,
+          content_payload: toJson({
+            workspaceStage: "plan_in_progress",
+            generatedAssets: drafts.map((draft) => ({
+              artifactType: draft.artifactType,
+              title: draft.title,
+            })),
+            primaryActionLabel: "Review assets",
+          }),
+        })
+        .select("id")
+        .single();
+
+    if (assistantMessageError || !assistantMessageRow) {
+      redirect(
+        buildCreateRoute({
+          sessionId,
+          workspaceId: selectedWorkspace.workspaceId,
+          error:
+            assistantMessageError?.message ??
+            "Unable to save the generated asset summary.",
+        }),
+      );
+    }
+
+    await supabase
+      .from("agent_sessions")
+      .update({
+        last_message_at: new Date().toISOString(),
+        session_metadata: toJson({
+          surface: "pm_create_workspace",
+          workspace_stage: "plan_in_progress",
+          recommended_next_step: "Review assets",
+        }),
+      })
+      .eq("id", sessionId);
+
+    await runBestEffort(async () => {
+      if (agentRunId && draftAssetTaskId) {
+        await updateAgentRunStatus(supabase, {
+          runId: agentRunId,
+          status: "running",
+          currentTaskId: draftAssetTaskId,
+          summary: plannerDecision.runningSummary,
+        });
+
+        await updateAgentTaskStatus(supabase, {
+          taskId: draftAssetTaskId,
+          status: "running",
+          started: true,
+        });
+      }
+    });
+
+    for (const draft of drafts) {
+      const startedAt = new Date();
+      let toolCallId: string | null = null;
+
+      await runBestEffort(async () => {
+        if (agentRunId && draftAssetTaskId) {
+          const toolCall = await recordAgentToolCall(supabase, {
+            runId: agentRunId,
+            taskId: draftAssetTaskId,
+            sessionId,
+            organizationId,
+            workspaceId: selectedWorkspace.workspaceId,
+            programId,
+            toolName: toolNameByArtifact[draft.artifactType],
+            inputPayload: {
+              artifactType: draft.artifactType,
+              title: draft.title,
+            },
+          });
+          toolCallId = toolCall.id;
+        }
+      });
+
+      await runBestEffort(async () => {
+        if (toolCallId) {
+          await completeAgentToolCall(supabase, {
+            toolCallId,
+            status: "completed",
+            outputPayload: {
+              artifactType: draft.artifactType,
+              title: draft.title,
+            },
+            startedAt,
+          });
+        }
+
+        await registerAgentArtifact(supabase, {
+          sessionId,
+          runId: agentRunId,
+          taskId: draftAssetTaskId,
+          organizationId,
+          workspaceId: selectedWorkspace.workspaceId,
+          programId,
+          artifactType: draft.artifactType,
+          status: "ready_for_review",
+          sourceTable: "agent_messages",
+          sourceId: assistantMessageRow.id,
+          title: draft.title,
+          summary: draft.summary,
+          artifactPayload: draft.payload,
+          createdByRunId: agentRunId,
+        });
+
+        await recordAgentEvent(supabase, {
+          sessionId,
+          runId: agentRunId,
+          taskId: draftAssetTaskId,
+          toolCallId,
+          organizationId,
+          workspaceId: selectedWorkspace.workspaceId,
+          programId,
+          eventType: "artifact_updated",
+          title: `${draft.title} drafted`,
+          body: draft.summary,
+          eventPayload: {
+            artifactType: draft.artifactType,
+            sourceMessageId: assistantMessageRow.id,
+          },
+        });
+      });
+    }
+
+    await runBestEffort(async () => {
+      const summaryMemoryId = await upsertAgentMemory(supabase, {
+        sessionId,
+        organizationId,
+        workspaceId: selectedWorkspace.workspaceId,
+        programId,
+        artifactType: "plan",
+        artifactSourceTable: "program_plans",
+        artifactSourceId: planRow.id,
+        memoryScope: "session",
+        memoryKey: "pm_workspace_launch_kit_summary",
+        summary: assistantMessage,
+        memoryPayload: {
+          targets,
+          artifactCount: drafts.length,
+        },
+        confidence: "high",
+        sourceType: "tool_output",
+        sourceRunId: agentRunId,
+      });
+
+      const { stageMemoryId, recommendationMemoryId } =
+        await persistPlannerStateMemory({
+          supabase,
+          sessionId,
+          organizationId,
+          workspaceId: selectedWorkspace.workspaceId,
+          programId,
+          briefId,
+          agentRunId,
+          stage: "plan_in_progress",
+          stageLabel: plannerDecision.recommendation.stageLabel,
+          stageTone: plannerDecision.recommendation.stageTone,
+          openQuestionCount,
+          recommendationTitle: plannerDecision.recommendation.title,
+          recommendationBody: plannerDecision.recommendation.body,
+          recommendationActionLabel:
+            plannerDecision.recommendation.primaryActionLabel,
+        });
+
+      if (draftAssetTaskId) {
+        await updateAgentTaskStatus(supabase, {
+          taskId: draftAssetTaskId,
+          status: "completed",
+          completed: true,
+          outputPayload: {
+            artifactCount: drafts.length,
+            targets,
+          },
+        });
+      }
+
+      if (updateMemoryTaskId) {
+        await updateAgentTaskStatus(supabase, {
+          taskId: updateMemoryTaskId,
+          status: "completed",
+          started: true,
+          completed: true,
+          outputPayload: {
+            summaryMemoryId,
+            stageMemoryId,
+            recommendationMemoryId,
+          },
+        });
+      }
+
+      if (recommendationTaskId) {
+        await updateAgentTaskStatus(supabase, {
+          taskId: recommendationTaskId,
+          status: "completed",
+          started: true,
+          completed: true,
+          outputPayload: {
+            title: plannerDecision.recommendation.title,
+            body: plannerDecision.recommendation.body,
+            primaryActionLabel:
+              plannerDecision.recommendation.primaryActionLabel,
+          },
+        });
+      }
+
+      await recordAgentEvent(supabase, {
+        sessionId,
+        runId: agentRunId,
+        taskId: recommendationTaskId,
+        organizationId,
+        workspaceId: selectedWorkspace.workspaceId,
+        programId,
+        eventType: "recommendation_created",
+        title: plannerDecision.recommendation.title,
+        body: plannerDecision.recommendation.body,
+        eventPayload: {
+          stage: "plan_in_progress",
+          primaryActionLabel:
+            plannerDecision.recommendation.primaryActionLabel,
+        },
+      });
+
+      if (agentRunId) {
+        await updateAgentRunStatus(supabase, {
+          runId: agentRunId,
+          status: "completed",
+          currentTaskId: recommendationTaskId ?? updateMemoryTaskId,
+          summary: plannerDecision.completionSummary,
+          runOutput: {
+            artifactCount: drafts.length,
+            targets,
+            primaryActionLabel:
+              plannerDecision.recommendation.primaryActionLabel,
+          },
+          completed: true,
+        });
+      }
+    });
+
+    revalidatePath("/app/create");
+    revalidatePath(`/app/create/${sessionId}/assets`);
+    redirect(
+      buildCreateRoute({
+        sessionId,
+        workspaceId: selectedWorkspace.workspaceId,
+        status: "assets-generated",
+      }),
+    );
+  }
 
   if (!plannerDecision.shouldGenerateBrief) {
     const recommendationPayload = {
@@ -2610,12 +3004,18 @@ export async function executeApprovedPlanAction(formData: FormData) {
         throw new Error("The brief needs a program title before execution can create the program.");
       }
 
+      const programSlug = await resolveUniqueProgramSlug({
+        supabase,
+        workspaceId: briefRow.workspace_id,
+        name: programName,
+      });
+
       const { data: rpcResult, error: rpcError } = await supabase.rpc(
         "bootstrap_program_creation",
         {
           workspace_id_input: briefRow.workspace_id,
           name_input: programName,
-          slug_input: ensureSlugOrThrow(programName, "Program slug"),
+          slug_input: programSlug,
           program_type_input: programType,
           short_description_input:
             getBriefObjective(briefRow.current_brief) ?? undefined,
@@ -2876,4 +3276,272 @@ export async function executeApprovedPlanAction(formData: FormData) {
       }),
     );
   }
+}
+
+export async function refineLandingPageAssetDraftAction(formData: FormData) {
+  const parsed = refineLandingPageAssetSchema.safeParse({
+    sessionId: formData.get("sessionId"),
+    assetKey: formData.get("assetKey"),
+    instruction: formData.get("instruction"),
+  });
+
+  if (!parsed.success) {
+    const fallbackSessionId = String(formData.get("sessionId") ?? "");
+    const fallbackAssetKey = String(formData.get("assetKey") ?? "");
+    redirect(
+      buildAssetDetailRouteWithStatus({
+        sessionId: fallbackSessionId,
+        assetKey: fallbackAssetKey,
+        tab: "edit",
+        error: parsed.error.issues[0]?.message ?? "Invalid landing page refinement request.",
+      }),
+    );
+  }
+
+  const { supabase, user, session } = await resolveSessionContext(
+    parsed.data.sessionId,
+  );
+
+  const [{ data: briefRow, error: briefError }, { data: artifactRow, error: artifactError }] =
+    await Promise.all([
+      supabase
+        .from("program_briefs")
+        .select(
+          "id, organization_id, workspace_id, program_id, title, detected_program_type, current_brief, active_plan_id",
+        )
+        .eq("id", session.brief_id!)
+        .single(),
+      supabase
+        .from("agent_artifacts")
+        .select(
+          "id, title, summary, artifact_payload, artifact_type, status, created_at",
+        )
+        .eq("session_id", parsed.data.sessionId)
+        .eq("artifact_type", "landing_page")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+
+  if (briefError || !briefRow) {
+    redirect(
+      buildAssetDetailRouteWithStatus({
+        sessionId: parsed.data.sessionId,
+        assetKey: parsed.data.assetKey,
+        tab: "edit",
+        error: briefError?.message ?? "Program brief not found.",
+      }),
+    );
+  }
+
+  if (artifactError || !artifactRow) {
+    redirect(
+      buildAssetDetailRouteWithStatus({
+        sessionId: parsed.data.sessionId,
+        assetKey: parsed.data.assetKey,
+        tab: "edit",
+        error: artifactError?.message ?? "Landing page draft not found.",
+      }),
+    );
+  }
+
+  const planRow = briefRow.active_plan_id
+    ? (
+        await supabase
+          .from("program_plans")
+          .select("id, title, summary")
+          .eq("id", briefRow.active_plan_id)
+          .maybeSingle()
+      ).data
+    : null;
+
+  const aiRequestId = await createAiRequestLog({
+    featureKey: "pm_asset_landing_page_refinement",
+    requestedBy: user.id,
+    organizationId: briefRow.organization_id,
+    workspaceId: briefRow.workspace_id,
+    programId: briefRow.program_id,
+    requestPayload: toJson({
+      sessionId: parsed.data.sessionId,
+      assetKey: parsed.data.assetKey,
+      instruction: parsed.data.instruction,
+      artifactId: artifactRow.id,
+    }),
+  });
+
+  await supabase.from("agent_messages").insert({
+    session_id: parsed.data.sessionId,
+    brief_id: briefRow.id,
+    role: "user",
+    kind: "chat",
+    content_text: parsed.data.instruction,
+    content_payload: toJson({
+      source: "landing_page_asset_editor",
+      assetKey: parsed.data.assetKey,
+      assetType: "landing_page",
+    }),
+    actor_user_id: user.id,
+  });
+
+  const { data: refinementData, error: refinementError } =
+    await supabase.functions.invoke("refine-landing-page-asset-draft", {
+      body: {
+        sessionId: parsed.data.sessionId,
+        instruction: parsed.data.instruction,
+        briefTitle: briefRow.title,
+        detectedProgramType: briefRow.detected_program_type,
+        currentBrief:
+          briefRow.current_brief &&
+          typeof briefRow.current_brief === "object" &&
+          !Array.isArray(briefRow.current_brief)
+            ? (briefRow.current_brief as Record<string, unknown>)
+            : null,
+        planTitle: planRow?.title ?? null,
+        planSummary: planRow?.summary ?? null,
+        currentDraft:
+          artifactRow.artifact_payload &&
+          typeof artifactRow.artifact_payload === "object" &&
+          !Array.isArray(artifactRow.artifact_payload)
+            ? artifactRow.artifact_payload
+            : null,
+      },
+    });
+
+  if (refinementError || !refinementData?.draft) {
+    await finalizeAiRequestLog({
+      aiRequestId,
+      featureKey: "pm_asset_landing_page_refinement",
+      outputPayload: toJson({
+        error:
+          refinementError?.message ??
+          "Landing page refinement did not return a structured draft.",
+      }),
+      status: "failed",
+      workspaceId: briefRow.workspace_id,
+      organizationId: briefRow.organization_id,
+      programId: briefRow.program_id,
+    });
+
+    redirect(
+      buildAssetDetailRouteWithStatus({
+        sessionId: parsed.data.sessionId,
+        assetKey: parsed.data.assetKey,
+        tab: "edit",
+        error:
+          refinementError?.message ??
+          "Landing page refinement did not return a structured draft.",
+      }),
+    );
+  }
+
+  const refinedDraft = refinementData.draft as Record<string, unknown>;
+  const sections =
+    Array.isArray(refinedDraft.sections) ? refinedDraft.sections.length : 0;
+  const draftTitle =
+    typeof refinedDraft.title === "string" && refinedDraft.title.trim().length > 0
+      ? refinedDraft.title
+      : artifactRow.title;
+  const summary = `Landing page draft updated from the PM instruction. ${sections > 0 ? `${sections} sections` : "Structured sections preserved"} are ready for review before approval.`;
+
+  const { data: assistantMessageRow, error: assistantMessageError } =
+    await supabase
+      .from("agent_messages")
+      .insert({
+        session_id: parsed.data.sessionId,
+        brief_id: briefRow.id,
+        plan_id: briefRow.active_plan_id,
+        role: "assistant",
+        kind: "chat",
+        content_text: summary,
+        content_payload: toJson({
+          workspaceStage: "plan_in_progress",
+          generatedAssets: [
+            {
+              artifactType: "landing_page",
+              title: draftTitle,
+            },
+          ],
+          primaryActionLabel: "Review assets",
+          assetKey: parsed.data.assetKey,
+          assetType: "landing_page",
+        }),
+      })
+      .select("id")
+      .single();
+
+  if (assistantMessageError || !assistantMessageRow) {
+    redirect(
+      buildAssetDetailRouteWithStatus({
+        sessionId: parsed.data.sessionId,
+        assetKey: parsed.data.assetKey,
+        tab: "edit",
+        error:
+          assistantMessageError?.message ??
+          "Unable to save the refined landing page draft summary.",
+      }),
+    );
+  }
+
+  await registerAgentArtifact(supabase, {
+    sessionId: parsed.data.sessionId,
+    runId: null,
+    taskId: null,
+    organizationId: briefRow.organization_id,
+    workspaceId: briefRow.workspace_id,
+    programId: briefRow.program_id,
+    artifactType: "landing_page",
+    status: "ready_for_review",
+    sourceTable: "agent_messages",
+    sourceId: assistantMessageRow.id,
+    title: draftTitle,
+    summary,
+    artifactPayload: refinedDraft,
+    createdByRunId: null,
+  });
+
+  await supabase
+    .from("agent_sessions")
+    .update({
+      last_message_at: new Date().toISOString(),
+      session_metadata: toJson({
+        surface: "pm_create_workspace",
+        workspace_stage: "plan_in_progress",
+        recommended_next_step: "Review assets",
+      }),
+    })
+    .eq("id", parsed.data.sessionId);
+
+  await finalizeAiRequestLog({
+    aiRequestId,
+    featureKey: "pm_asset_landing_page_refinement",
+    outputPayload: toJson({
+      title: draftTitle,
+      sectionCount: sections,
+      assetType: "landing_page",
+    }),
+    status: "generated",
+    workspaceId: briefRow.workspace_id,
+    organizationId: briefRow.organization_id,
+    programId: briefRow.program_id,
+    modelName:
+      typeof refinementData.model === "string" ? refinementData.model : undefined,
+    tokenCount:
+      typeof refinementData.usage?.total_tokens === "number"
+        ? refinementData.usage.total_tokens
+        : undefined,
+  });
+
+  revalidatePath(`/app/create/${parsed.data.sessionId}/assets`);
+  revalidatePath(
+    `/app/create/${parsed.data.sessionId}/assets/${parsed.data.assetKey}`,
+  );
+  revalidatePath("/app/create");
+
+  redirect(
+    buildAssetDetailRouteWithStatus({
+      sessionId: parsed.data.sessionId,
+      assetKey: parsed.data.assetKey,
+      status: "landing-page-updated",
+    }),
+  );
 }

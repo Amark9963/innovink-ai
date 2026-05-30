@@ -1255,6 +1255,19 @@ export type ExecutionRunStepSummary = {
   errorPayload: Database["public"]["Tables"]["execution_run_steps"]["Row"]["error_payload"];
 };
 
+export type AgentArtifactSummary = {
+  id: string;
+  artifactType: Database["public"]["Enums"]["agent_artifact_type"];
+  status: Database["public"]["Enums"]["agent_artifact_status"];
+  sourceTable: string;
+  sourceId: string;
+  versionLabel: string | null;
+  title: string | null;
+  summary: string | null;
+  artifactPayload: Database["public"]["Tables"]["agent_artifacts"]["Row"]["artifact_payload"];
+  createdAt: string;
+};
+
 export type ProgramBriefVersionSummary = {
   id: string;
   versionNumber: number;
@@ -1278,6 +1291,7 @@ export type AgentCreateWorkspaceData = {
   plan: ProgramPlanSummary | null;
   planItems: ProgramPlanItemSummary[];
   approvals: ApprovalRequestSummary[];
+  artifacts: AgentArtifactSummary[];
   executionRuns: ExecutionRunSummary[];
   latestExecutionSteps: ExecutionRunStepSummary[];
 };
@@ -1422,6 +1436,7 @@ export async function getAgentCreateWorkspaceData(
       plan: null,
       planItems: [],
       approvals: [],
+      artifacts: [],
       executionRuns: [],
       latestExecutionSteps: [],
     } satisfies AgentCreateWorkspaceData;
@@ -1505,6 +1520,7 @@ export async function getAgentCreateWorkspaceData(
       plan: null,
       planItems: [],
       approvals: [],
+      artifacts: [],
       executionRuns: [],
       latestExecutionSteps: [],
     } satisfies AgentCreateWorkspaceData;
@@ -1596,6 +1612,7 @@ export async function getAgentCreateWorkspaceData(
       plan: null,
       planItems: [],
       approvals: [],
+      artifacts: [],
       executionRuns: [],
       latestExecutionSteps: [],
     } satisfies AgentCreateWorkspaceData;
@@ -1626,6 +1643,7 @@ export async function getAgentCreateWorkspaceData(
       plan: null,
       planItems: [],
       approvals: [],
+      artifacts: [],
       executionRuns: [],
       latestExecutionSteps: [],
     } satisfies AgentCreateWorkspaceData;
@@ -1706,6 +1724,7 @@ export async function getAgentCreateWorkspaceData(
 
   const [
     { data: approvalRows, error: approvalError },
+    { data: artifactRows, error: artifactsError },
     { data: executionRows, error: executionError },
   ] = await Promise.all([
     supabase
@@ -1714,6 +1733,20 @@ export async function getAgentCreateWorkspaceData(
       .eq("brief_id", brief.id)
       .order("requested_at", { ascending: false })
       .limit(8),
+    supabase
+      .from("agent_artifacts")
+      .select(
+        "id, artifact_type, status, source_table, source_id, version_label, title, summary, artifact_payload, created_at",
+      )
+      .eq("session_id", activeSession.id)
+      .in("artifact_type", [
+        "landing_page",
+        "registration_form",
+        "submission_form",
+        "judging_setup",
+      ])
+      .order("created_at", { ascending: false })
+      .limit(16),
     supabase
       .from("execution_runs")
       .select(
@@ -1726,6 +1759,10 @@ export async function getAgentCreateWorkspaceData(
 
   if (approvalError) {
     throw approvalError;
+  }
+
+  if (artifactsError) {
+    throw artifactsError;
   }
 
   if (executionError) {
@@ -1741,6 +1778,19 @@ export async function getAgentCreateWorkspaceData(
     requestedAt: approval.requested_at,
     reviewedAt: approval.reviewed_at,
   })) satisfies ApprovalRequestSummary[];
+
+  const artifacts = (artifactRows ?? []).map((artifact) => ({
+    id: artifact.id,
+    artifactType: artifact.artifact_type,
+    status: artifact.status,
+    sourceTable: artifact.source_table,
+    sourceId: artifact.source_id,
+    versionLabel: artifact.version_label,
+    title: artifact.title,
+    summary: artifact.summary,
+    artifactPayload: artifact.artifact_payload,
+    createdAt: artifact.created_at,
+  })) satisfies AgentArtifactSummary[];
 
   const executionRuns = (executionRows ?? []).map((run) => ({
     id: run.id,
@@ -1796,6 +1846,7 @@ export async function getAgentCreateWorkspaceData(
     plan,
     planItems,
     approvals,
+    artifacts,
     executionRuns,
     latestExecutionSteps,
   } satisfies AgentCreateWorkspaceData;

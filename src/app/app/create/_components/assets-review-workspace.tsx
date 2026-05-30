@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { prepareApprovalRequestAction } from "@/app/app/create/actions";
+import type { Json } from "@/lib/supabase/database.types";
 import type {
   AgentCreateWorkspaceData,
+  AgentArtifactSummary,
   ApprovalRequestItemSummary,
   ExecutionRunStepSummary,
   ProgramPlanItemSummary,
@@ -11,7 +13,7 @@ import { cn } from "@/lib/utils/cn";
 type AssetCategory = "all" | "comms" | "landing" | "forms" | "reports" | "operations";
 type AssetStatusFilter = "all" | "draft" | "in_review" | "approved";
 type AssetView = "grid" | "list";
-type AssetDetailTab = "preview" | "edit" | "history";
+export type AssetDetailTab = "preview" | "edit" | "history";
 
 type AssetsReviewWorkspaceProps = {
   sessionId: string;
@@ -24,7 +26,7 @@ type AssetsReviewWorkspaceProps = {
   detailTab: AssetDetailTab;
 };
 
-type DerivedAsset = {
+export type DerivedAsset = {
   id: string;
   itemKey: string;
   title: string;
@@ -39,6 +41,7 @@ type DerivedAsset = {
   statusTone: "muted" | "amber" | "green";
   meta: string;
   dateLabel: string;
+  artifactPayload: Json | null;
   regeneratePrompt: string;
   editPrompt: string;
   editorSurface: "landing-page" | "registration-form" | "submission-form" | "judging" | "sponsor-report" | null;
@@ -54,7 +57,12 @@ export function AssetsReviewWorkspace({
   view,
   detailTab,
 }: AssetsReviewWorkspaceProps) {
-  const assets = deriveAssets(data.planItems, approvalItems, data.latestExecutionSteps);
+  const assets = deriveAssets(
+    data.planItems,
+    approvalItems,
+    data.latestExecutionSteps,
+    data.artifacts,
+  );
   const selectedAsset =
     assets.find((asset) => asset.itemKey === selectedAssetKey) ?? assets[0] ?? null;
   const linkedProgramId = data.brief?.programId ?? null;
@@ -214,13 +222,17 @@ export function AssetsReviewWorkspace({
               {visibleAssets.map((asset) => (
                 <Link
                   key={asset.id}
-                  href={buildAssetRoute(sessionId, {
-                    asset: asset.itemKey,
-                    category,
-                    status: statusFilter,
-                    view,
-                    tab: detailTab,
-                  })}
+                  href={
+                    selectedAsset?.itemKey === asset.itemKey
+                      ? buildAssetDetailRoute(sessionId, asset.itemKey, "preview")
+                      : buildAssetRoute(sessionId, {
+                          asset: asset.itemKey,
+                          category,
+                          status: statusFilter,
+                          view,
+                          tab: detailTab,
+                        })
+                  }
                   className={cn(
                     "overflow-hidden rounded-xl border bg-[#111e30] transition hover:border-white/20 hover:shadow-[0_8px_24px_rgba(0,0,0,0.28)]",
                     selectedAsset?.itemKey === asset.itemKey
@@ -247,7 +259,11 @@ export function AssetsReviewWorkspace({
                     <div className="mt-1 text-[11px] text-[#9baabf]">{asset.meta}</div>
                     <div className="mt-3 flex items-center justify-between gap-3">
                       <AssetStatusBadge tone={asset.statusTone}>{asset.statusLabel}</AssetStatusBadge>
-                      <span className="text-[10px] text-[#5e7088]">{asset.dateLabel}</span>
+                      {selectedAsset?.itemKey === asset.itemKey ? (
+                        <span className="text-[10px] font-medium text-[#ccaa4a]">Open full asset</span>
+                      ) : (
+                        <span className="text-[10px] text-[#5e7088]">{asset.dateLabel}</span>
+                      )}
                     </div>
                   </div>
                 </Link>
@@ -258,13 +274,17 @@ export function AssetsReviewWorkspace({
               {visibleAssets.map((asset) => (
                 <Link
                   key={asset.id}
-                  href={buildAssetRoute(sessionId, {
-                    asset: asset.itemKey,
-                    category,
-                    status: statusFilter,
-                    view,
-                    tab: detailTab,
-                  })}
+                  href={
+                    selectedAsset?.itemKey === asset.itemKey
+                      ? buildAssetDetailRoute(sessionId, asset.itemKey, "preview")
+                      : buildAssetRoute(sessionId, {
+                          asset: asset.itemKey,
+                          category,
+                          status: statusFilter,
+                          view,
+                          tab: detailTab,
+                        })
+                  }
                   className={cn(
                     "flex items-center gap-4 rounded-xl border bg-[#111e30] p-4 transition hover:border-white/20",
                     selectedAsset?.itemKey === asset.itemKey ? "border-[#b08a28]" : "border-white/10",
@@ -360,6 +380,12 @@ export function AssetsReviewWorkspace({
                     className="block rounded-md border border-white/10 px-3 py-2 text-center text-[12px] font-medium text-[#9baabf] transition hover:bg-white/[0.04] hover:text-[#eae5dc]"
                   >
                     Open in Innova Chat
+                  </Link>
+                  <Link
+                    href={buildAssetDetailRoute(sessionId, selectedAsset.itemKey, "preview")}
+                    className="block rounded-md border border-white/10 px-3 py-2 text-center text-[12px] font-medium text-[#9baabf] transition hover:bg-white/[0.04] hover:text-[#eae5dc]"
+                  >
+                    Open full asset
                   </Link>
                   {selectedAsset.editorSurface === "landing-page" && linkedProgramId ? (
                     <Link
@@ -459,13 +485,20 @@ export function AssetsReviewWorkspace({
   );
 }
 
-function deriveAssets(
+export function deriveAssets(
   planItems: ProgramPlanItemSummary[],
   approvalItems: ApprovalRequestItemSummary[],
   latestExecutionSteps: ExecutionRunStepSummary[],
+  artifacts: AgentArtifactSummary[],
 ) {
   const approvalMap = new Map(approvalItems.map((item) => [item.itemKey, item]));
   const stepMap = new Map(latestExecutionSteps.map((step) => [step.stepKey, step]));
+  const artifactMap = new Map<AgentArtifactSummary["artifactType"], AgentArtifactSummary>();
+  for (const artifact of artifacts) {
+    if (!artifactMap.has(artifact.artifactType)) {
+      artifactMap.set(artifact.artifactType, artifact);
+    }
+  }
 
   return planItems
     .filter((item) => assetConfig(item.itemType))
@@ -473,6 +506,7 @@ function deriveAssets(
       const config = assetConfig(item.itemType)!;
       const approval = approvalMap.get(item.itemKey) ?? null;
       const step = stepMap.get(item.itemKey) ?? null;
+      const artifact = artifactMap.get(item.itemType as AgentArtifactSummary["artifactType"]) ?? null;
       const status: DerivedAsset["status"] =
         step?.status === "completed" || approval?.status === "approved"
           ? "approved"
@@ -493,18 +527,58 @@ function deriveAssets(
         category: config.category,
         typeLabel: config.typeLabel,
         previewGlyph: config.previewGlyph,
-        previewTitle: config.previewTitle,
-        previewBody: config.previewBody,
+        previewTitle:
+          (typeof artifact?.artifactPayload === "object" &&
+          artifact?.artifactPayload &&
+          !Array.isArray(artifact.artifactPayload) &&
+          typeof (artifact.artifactPayload as Record<string, unknown>).title === "string"
+            ? ((artifact.artifactPayload as Record<string, unknown>).title as string)
+            : null) ??
+          config.previewTitle,
+        previewBody: artifact?.summary ?? config.previewBody,
         status,
         statusLabel,
         statusTone,
-        meta: config.meta,
-        dateLabel: status === "approved" ? "Execution ready" : status === "in_review" ? "Pending packet" : "Draft generated",
+        meta: buildAssetMeta(config.meta, artifact?.artifactPayload),
+        artifactPayload: artifact?.artifactPayload ?? null,
+        dateLabel:
+          status === "approved"
+            ? "Execution ready"
+            : status === "in_review"
+              ? "Pending packet"
+              : artifact?.createdAt
+                ? "Draft generated"
+                : "Awaiting draft",
         regeneratePrompt: `Regenerate the ${item.title} asset for this program and keep it aligned with the current brief and plan.`,
         editPrompt: `Refine the ${item.title} asset. Keep the program goals the same, but improve clarity, structure, and operator readiness.`,
         editorSurface: config.editorSurface,
       } satisfies DerivedAsset;
     });
+}
+
+function buildAssetMeta(
+  fallback: string,
+  payload: AgentArtifactSummary["artifactPayload"] | undefined,
+) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return fallback;
+  }
+
+  const record = payload as Record<string, unknown>;
+
+  if (Array.isArray(record.sections)) {
+    return `${record.sections.length} sections`;
+  }
+
+  if (Array.isArray(record.fields)) {
+    return `${record.fields.length} fields`;
+  }
+
+  if (Array.isArray(record.rounds)) {
+    return `${record.rounds.length} rounds`;
+  }
+
+  return fallback;
 }
 
 function assetConfig(itemType: string) {
@@ -601,7 +675,7 @@ function assetConfig(itemType: string) {
   return null;
 }
 
-function buildAssetRoute(
+export function buildAssetRoute(
   sessionId: string,
   state: {
     asset: string | null;
@@ -622,8 +696,20 @@ function buildAssetRoute(
   return `/app/create/${sessionId}/assets${query ? `?${query}` : ""}`;
 }
 
-function buildCreateHref(sessionId: string, prompt: string) {
+export function buildCreateHref(sessionId: string, prompt: string) {
   return `/app/create?session=${sessionId}&prompt=${encodeURIComponent(prompt)}`;
+}
+
+export function buildAssetDetailRoute(
+  sessionId: string,
+  assetKey: string,
+  tab: AssetDetailTab,
+) {
+  const params = new URLSearchParams();
+  if (tab !== "preview") params.set("tab", tab);
+
+  const query = params.toString();
+  return `/app/create/${sessionId}/assets/${assetKey}${query ? `?${query}` : ""}`;
 }
 
 function filterChip(active: boolean) {
@@ -644,7 +730,7 @@ function viewButton(active: boolean) {
   );
 }
 
-function AssetStatusBadge({
+export function AssetStatusBadge({
   children,
   tone,
 }: {
@@ -665,11 +751,220 @@ function AssetStatusBadge({
   );
 }
 
-function HistoryBlock({ label, value }: { label: string; value: string }) {
+export function HistoryBlock({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-white/10 bg-[#162034] p-4">
       <div className="text-[10px] uppercase tracking-[0.06em] text-[#5e7088]">{label}</div>
       <div className="mt-2 text-[12px] font-medium text-[#eae5dc]">{value}</div>
+    </div>
+  );
+}
+
+export function buildLiveEditorLink(
+  asset: DerivedAsset,
+  programId: string | null,
+) {
+  if (!programId) {
+    return null;
+  }
+
+  switch (asset.editorSurface) {
+    case "landing-page":
+      return `/app/programs/${programId}/landing-page`;
+    case "registration-form":
+      return `/app/programs/${programId}/registration-form`;
+    case "submission-form":
+      return `/app/programs/${programId}/submission-form`;
+    case "judging":
+      return `/app/programs/${programId}/judging`;
+    case "sponsor-report":
+      return `/app/programs/${programId}/sponsor-report`;
+    default:
+      return null;
+  }
+}
+
+export function buildLiveEditorLabel(asset: DerivedAsset) {
+  switch (asset.editorSurface) {
+    case "landing-page":
+      return "Open landing editor";
+    case "registration-form":
+      return "Open registration editor";
+    case "submission-form":
+      return "Open submission editor";
+    case "judging":
+      return "Open judging setup";
+    case "sponsor-report":
+      return "Open sponsor report";
+    default:
+      return "Open live editor";
+  }
+}
+
+export function AssetDraftPreview({ asset }: { asset: DerivedAsset }) {
+  const payload = asset.artifactPayload;
+
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return (
+      <div className="rounded-2xl border border-white/10 bg-[#111e30] p-5 text-[12px] text-[#9baabf]">
+        No structured preview is available yet for this draft. Use Innova to refine the asset and return here for review.
+      </div>
+    );
+  }
+
+  const record = payload as Record<string, unknown>;
+
+  if (Array.isArray(record.sections)) {
+    const sections = record.sections.filter(
+      (section): section is Record<string, unknown> =>
+        typeof section === "object" && section !== null && !Array.isArray(section),
+    );
+
+    return (
+      <div className="space-y-3">
+        {sections.map((section, index) => (
+          <div
+            key={`${String(section.sectionKey ?? index)}-${index}`}
+            className="rounded-2xl border border-white/10 bg-[#111e30] p-5"
+          >
+            <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#5e7088]">
+              {typeof section.sectionKey === "string"
+                ? section.sectionKey.replaceAll("_", " ")
+                : `Section ${index + 1}`}
+            </div>
+            {typeof section.headline === "string" ? (
+              <div className="mt-3 text-[16px] font-semibold text-[#eae5dc]">
+                {section.headline}
+              </div>
+            ) : null}
+            {typeof section.subheadline === "string" ? (
+              <div className="mt-2 text-[12px] leading-7 text-[#c8d3de]">
+                {section.subheadline}
+              </div>
+            ) : null}
+            {typeof section.body === "string" ? (
+              <div className="mt-3 text-[12px] leading-7 text-[#9baabf]">
+                {section.body}
+              </div>
+            ) : null}
+            {typeof section.ctaLabel === "string" ? (
+              <div className="mt-4 inline-flex rounded-md border border-[#b08a2838] bg-[#b08a2810] px-3 py-2 text-[11px] font-medium text-[#e4d8b4]">
+                CTA: {section.ctaLabel}
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (Array.isArray(record.fields)) {
+    const fields = record.fields.filter(
+      (field): field is Record<string, unknown> =>
+        typeof field === "object" && field !== null && !Array.isArray(field),
+    );
+
+    return (
+      <div className="rounded-2xl overflow-hidden border border-white/10 bg-[#111e30]">
+        <div className="border-b border-white/7 px-5 py-4 text-[13px] font-semibold text-[#eae5dc]">
+          Draft form fields
+        </div>
+        <div className="divide-y divide-white/7">
+          {fields.map((field, index) => (
+            <div key={`${String(field.key ?? index)}-${index}`} className="px-5 py-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-[12px] font-semibold text-[#eae5dc]">
+                    {typeof field.label === "string" ? field.label : `Field ${index + 1}`}
+                  </div>
+                  <div className="mt-2 text-[11px] text-[#9baabf]">
+                    {typeof field.type === "string"
+                      ? field.type.replaceAll("_", " ")
+                      : "field"}
+                  </div>
+                </div>
+                <AssetStatusBadge tone={field.required === true ? "amber" : "muted"}>
+                  {field.required === true ? "Required" : "Optional"}
+                </AssetStatusBadge>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (Array.isArray(record.rounds)) {
+    const rounds = record.rounds.filter(
+      (round): round is Record<string, unknown> =>
+        typeof round === "object" && round !== null && !Array.isArray(round),
+    );
+
+    return (
+      <div className="space-y-3">
+        {rounds.map((round, index) => (
+          <div
+            key={`${String(round.name ?? index)}-${index}`}
+            className="rounded-2xl border border-white/10 bg-[#111e30] p-5"
+          >
+            <div className="text-[15px] font-semibold text-[#eae5dc]">
+              {typeof round.name === "string" ? round.name : `Round ${index + 1}`}
+            </div>
+            <div className="mt-2 text-[11px] text-[#9baabf]">
+              {round.isBlindReview === true ? "Blind review enabled" : "Standard review"}
+            </div>
+            {Array.isArray(round.criteria) ? (
+              <div className="mt-4 space-y-2">
+                {round.criteria.map((criterion, criterionIndex) => {
+                  if (
+                    typeof criterion !== "object" ||
+                    criterion === null ||
+                    Array.isArray(criterion)
+                  ) {
+                    return null;
+                  }
+
+                  const criterionRecord = criterion as Record<string, unknown>;
+                  return (
+                    <div
+                      key={`${String(criterionRecord.key ?? criterionIndex)}-${criterionIndex}`}
+                      className="rounded-xl border border-white/7 bg-[#162034] px-4 py-3"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <div className="text-[12px] font-medium text-[#eae5dc]">
+                            {typeof criterionRecord.label === "string"
+                              ? criterionRecord.label
+                              : `Criterion ${criterionIndex + 1}`}
+                          </div>
+                          {typeof criterionRecord.description === "string" ? (
+                            <div className="mt-2 text-[11px] leading-6 text-[#9baabf]">
+                              {criterionRecord.description}
+                            </div>
+                          ) : null}
+                        </div>
+                        {typeof criterionRecord.weight === "number" ? (
+                          <span className="text-[11px] font-medium text-[#ccaa4a]">
+                            {criterionRecord.weight}%
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-[#111e30] p-5">
+      <pre className="overflow-x-auto whitespace-pre-wrap text-[11px] leading-6 text-[#9baabf]">
+        {JSON.stringify(record, null, 2)}
+      </pre>
     </div>
   );
 }

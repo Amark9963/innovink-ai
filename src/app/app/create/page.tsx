@@ -32,6 +32,8 @@ const statusCopy: Record<string, string> = {
     "The brief now has enough structure to draft a serious execution plan.",
   "plan-generated":
     "A proposed execution plan is ready for review and downstream approvals.",
+  "assets-generated":
+    "The requested launch-kit drafts are ready for PM review in the assets workspace.",
   "approval-packet-ready":
     "The approval packet is ready for governed review. Once it is approved, the workspace can move into deterministic execution.",
   "approval-approved":

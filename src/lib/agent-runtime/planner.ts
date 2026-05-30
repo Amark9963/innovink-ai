@@ -7,7 +7,8 @@ export type PmPlannerIntent =
   | "define_program_goal"
   | "refine_brief"
   | "answer_open_questions"
-  | "recommend_next_step";
+  | "recommend_next_step"
+  | "generate_launch_assets";
 
 export type PmWorkspaceStage =
   | "goal_definition"
@@ -40,6 +41,7 @@ export type PmPlannerDecision = {
   taskPlan: PmPlannerTaskBlueprint[];
   recommendation: PmPlannerRecommendation;
   shouldGenerateBrief: boolean;
+  shouldGenerateAssets: boolean;
   planningSummary: string;
   runningSummary: string;
   completionSummary: string;
@@ -70,6 +72,25 @@ const NEXT_STEP_PATTERNS = [
   "what next",
   "recommend the next step",
   "recommend next step",
+];
+
+const ASSET_GENERATION_PATTERNS = [
+  "generate the landing page",
+  "draft the landing page",
+  "create the landing page",
+  "generate the registration form",
+  "create the registration form",
+  "draft the registration form",
+  "generate the submission form",
+  "create the submission form",
+  "draft the submission form",
+  "set up judging",
+  "generate the judging setup",
+  "draft the judging setup",
+  "generate launch assets",
+  "generate launch kit",
+  "generate all assets",
+  "generate all of them",
 ];
 
 const GOAL_DEFINITION_PATTERNS = [
@@ -149,6 +170,10 @@ export function classifyPmPlannerIntent(input: PmPlannerInput): PmPlannerIntent 
     return "recommend_next_step";
   }
 
+  if (input.hasPlan && matchesAny(normalized, ASSET_GENERATION_PATTERNS)) {
+    return "generate_launch_assets";
+  }
+
   if (!hasBrief) {
     return "define_program_goal";
   }
@@ -220,6 +245,7 @@ export function planPmWorkspaceRun(input: PmPlannerInput): PmPlannerDecision {
         ],
         recommendation,
         shouldGenerateBrief: true,
+        shouldGenerateAssets: false,
         planningSummary:
           "Inspecting the PM workspace goal and planning the initial brief drafting sequence.",
         runningSummary:
@@ -273,6 +299,7 @@ export function planPmWorkspaceRun(input: PmPlannerInput): PmPlannerDecision {
         ],
         recommendation,
         shouldGenerateBrief: true,
+        shouldGenerateAssets: false,
         planningSummary:
           "Inspecting the unresolved brief inputs and planning the clarification update.",
         runningSummary:
@@ -312,6 +339,7 @@ export function planPmWorkspaceRun(input: PmPlannerInput): PmPlannerDecision {
         ],
         recommendation,
         shouldGenerateBrief: false,
+        shouldGenerateAssets: false,
         planningSummary:
           "Inspecting the PM workspace state and planning the next-step recommendation.",
         runningSummary:
@@ -320,6 +348,61 @@ export function planPmWorkspaceRun(input: PmPlannerInput): PmPlannerDecision {
           "The PM workspace recommendation is ready and the next governed action is clear.",
         waitingSummary:
           "The PM workspace recommendation is ready and waiting for the next operator decision.",
+      };
+    case "generate_launch_assets":
+      return {
+        intent,
+        stage,
+        runType: "launch_kit_generation",
+        taskPlan: [
+          {
+            taskType: "inspect_context",
+            title: "Inspect brief and plan context",
+            description:
+              "Load the current brief, plan, and operator instruction before drafting the requested launch assets.",
+            displayOrder: 10,
+          },
+          {
+            taskType: "draft_asset",
+            title: "Draft governed launch assets",
+            description:
+              "Generate the requested landing page, forms, or judging package as PM-reviewed launch-kit artifacts.",
+            displayOrder: 20,
+          },
+          {
+            taskType: "update_memory",
+            title: "Persist launch-kit memory",
+            description:
+              "Store the latest launch-kit draft state and the next recommended PM action.",
+            displayOrder: 30,
+          },
+          {
+            taskType: "emit_recommendation",
+            title: "Recommend the next PM action",
+            description:
+              "Guide the PM toward asset review, further refinements, or the approval packet.",
+            displayOrder: 40,
+          },
+        ],
+        recommendation: {
+          title: "Review the generated launch assets",
+          body:
+            "The next best step is to review the generated launch-kit assets, refine anything that needs adjustment, and then move into the governed approval packet.",
+          primaryActionLabel: "Review assets",
+          stageLabel: "Assets generated",
+          stageTone: "green",
+          blockingOpenInputCount: 0,
+        },
+        shouldGenerateBrief: false,
+        shouldGenerateAssets: true,
+        planningSummary:
+          "Inspecting the current brief and plan before drafting the requested launch-kit assets.",
+        runningSummary:
+          "Drafting the requested landing page, forms, and judging setup for PM review.",
+        completionSummary:
+          "The requested launch-kit assets are ready for PM review and downstream approvals.",
+        waitingSummary:
+          "The asset drafts are ready, and Innova is waiting for PM review or follow-up edits.",
       };
     case "refine_brief":
     default:
@@ -366,6 +449,7 @@ export function planPmWorkspaceRun(input: PmPlannerInput): PmPlannerDecision {
         ],
         recommendation,
         shouldGenerateBrief: true,
+        shouldGenerateAssets: false,
         planningSummary:
           "Inspecting the current brief and planning the latest PM refinement.",
         runningSummary:
@@ -437,9 +521,9 @@ export function buildPmStageRecommendation(input: {
       return {
         title: "Advance the plan toward approvals",
         body:
-          "The next best step is to refine the current execution plan or prepare the approval packet so the program can move toward governed execution.",
-        primaryActionLabel: "Prepare approvals",
-        stageLabel: "Plan in progress",
+          "The next best step is to generate or review the launch-kit assets so the PM can validate the landing page, forms, and judging setup before preparing the approval packet.",
+        primaryActionLabel: "Generate launch assets",
+        stageLabel: "Ready for assets",
         stageTone: "gold",
         blockingOpenInputCount: 0,
       };

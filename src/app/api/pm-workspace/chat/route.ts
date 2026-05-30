@@ -5,6 +5,7 @@ import {
   buildPmStageRecommendation,
   planPmWorkspaceRun,
 } from "@/lib/agent-runtime/planner";
+import { buildLaunchKitAssetDrafts } from "@/lib/ai/program-launch-kit";
 import {
   completeAgentToolCall,
   createAgentRun,
@@ -529,6 +530,349 @@ export async function POST(request: Request) {
           title: "Planning the run",
           body: plannerDecision.planningSummary,
         });
+
+        if (plannerDecision.shouldGenerateAssets) {
+          if (!briefRow.active_plan_id) {
+            throw new Error(
+              "A generated execution plan is required before launch assets can be drafted.",
+            );
+          }
+
+          const { data: planRow, error: planError } = await supabase
+            .from("program_plans")
+            .select("id, title, summary")
+            .eq("id", briefRow.active_plan_id)
+            .single();
+
+          if (planError || !planRow) {
+            throw new Error(planError?.message ?? "Unable to load the current plan.");
+          }
+
+          let draftAssetTaskId: string | null = null;
+          let updateMemoryTaskId: string | null = null;
+          let recommendationTaskId: string | null = null;
+
+          const draftAssetTask = plannerDecision.taskPlan.find(
+            (task) => task.taskType === "draft_asset",
+          );
+          const updateMemoryTask = plannerDecision.taskPlan.find(
+            (task) => task.taskType === "update_memory",
+          );
+          const recommendationTask = plannerDecision.taskPlan.find(
+            (task) => task.taskType === "emit_recommendation",
+          );
+
+          draftAssetTaskId =
+            draftAssetTask && agentRunId
+              ? (
+                  await supabase
+                    .from("agent_run_tasks")
+                    .select("id")
+                    .eq("run_id", agentRunId!)
+                    .eq("task_type", "draft_asset")
+                    .maybeSingle()
+                ).data?.id ?? null
+              : null;
+          updateMemoryTaskId =
+            updateMemoryTask && agentRunId
+              ? (
+                  await supabase
+                    .from("agent_run_tasks")
+                    .select("id")
+                    .eq("run_id", agentRunId!)
+                    .eq("task_type", "update_memory")
+                    .maybeSingle()
+                ).data?.id ?? null
+              : null;
+          recommendationTaskId =
+            recommendationTask && agentRunId
+              ? (
+                  await supabase
+                    .from("agent_run_tasks")
+                    .select("id")
+                    .eq("run_id", agentRunId!)
+                    .eq("task_type", "emit_recommendation")
+                    .maybeSingle()
+                ).data?.id ?? null
+              : null;
+
+          await runBestEffort(async () => {
+            if (agentRunId && draftAssetTaskId) {
+              await updateAgentRunStatus(supabase, {
+                runId: agentRunId,
+                status: "running",
+                currentTaskId: draftAssetTaskId,
+                summary: plannerDecision.runningSummary,
+              });
+
+              await updateAgentTaskStatus(supabase, {
+                taskId: draftAssetTaskId,
+                status: "running",
+                started: true,
+              });
+            }
+          });
+
+          writeLine(controller, encoder, {
+            type: "status",
+            title: "Drafting launch assets",
+            body: plannerDecision.runningSummary,
+          });
+
+          const { drafts, targets } = buildLaunchKitAssetDrafts({
+            message: parsed.data.message,
+            brief: {
+              title: briefRow.title,
+              detectedProgramType: briefRow.detected_program_type,
+              currentBrief:
+                (briefRow.current_brief as Record<string, unknown> | null) ?? null,
+            },
+            plan: {
+              title: planRow.title,
+              summary: planRow.summary,
+            },
+          });
+
+          if (drafts.length === 0) {
+            throw new Error(
+              "I could not tell which launch asset to draft. Ask for a landing page, registration form, submission form, judging setup, or the full launch kit.",
+            );
+          }
+
+          const toolNameByArtifact = {
+            landing_page: "draft_landing_page",
+            registration_form: "draft_registration_form",
+            submission_form: "draft_submission_form",
+            judging_setup: "draft_judging_setup",
+          } as const;
+
+          const toolCallSummaries: Array<{
+            artifactType: string;
+            title: string;
+            toolCallId: string | null;
+          }> = [];
+
+          for (const draft of drafts) {
+            const startedAt = new Date();
+            let toolCallId: string | null = null;
+
+            await runBestEffort(async () => {
+              if (agentRunId && draftAssetTaskId) {
+                const toolCall = await recordAgentToolCall(supabase, {
+                  runId: agentRunId,
+                  taskId: draftAssetTaskId,
+                  sessionId: activeSessionId,
+                  organizationId,
+                  workspaceId: selectedWorkspace.workspaceId,
+                  programId,
+                  toolName: toolNameByArtifact[draft.artifactType],
+                  inputPayload: {
+                    artifactType: draft.artifactType,
+                    title: draft.title,
+                  },
+                });
+                toolCallId = toolCall.id;
+              }
+            });
+
+            await runBestEffort(async () => {
+              if (toolCallId) {
+                await completeAgentToolCall(supabase, {
+                  toolCallId,
+                  status: "completed",
+                  outputPayload: {
+                    artifactType: draft.artifactType,
+                    title: draft.title,
+                  },
+                  startedAt,
+                });
+              }
+            });
+
+            toolCallSummaries.push({
+              artifactType: draft.artifactType,
+              title: draft.title,
+              toolCallId,
+            });
+          }
+
+          const assistantMessage = `I generated ${drafts.length === 1 ? "the requested launch asset" : "the requested launch assets"} from the current brief and execution plan.\n\n${drafts.map((draft) => `- ${draft.title}: ${draft.summary}`).join("\n")}\n\nReview the drafts in the assets workspace, refine anything that needs adjustment, and then move into the governed approval packet.`;
+
+          const { data: assistantMessageRow, error: assistantMessageError } =
+            await supabase
+              .from("agent_messages")
+              .insert({
+                session_id: activeSessionId,
+                brief_id: activeBriefId,
+                plan_id: planRow.id,
+                role: "assistant",
+                kind: "chat",
+                content_text: assistantMessage,
+                content_payload: json({
+                  workspaceStage: "plan_in_progress",
+                  generatedAssets: drafts.map((draft) => ({
+                    artifactType: draft.artifactType,
+                    title: draft.title,
+                  })),
+                  primaryActionLabel: "Review assets",
+                }),
+              })
+              .select("id")
+              .single();
+
+          if (assistantMessageError || !assistantMessageRow) {
+            throw new Error(
+              assistantMessageError?.message ??
+                "Unable to save the generated asset summary.",
+            );
+          }
+
+          for (const draft of drafts) {
+            await registerAgentArtifact(supabase, {
+              sessionId: activeSessionId,
+              runId: agentRunId,
+              taskId: draftAssetTaskId,
+              organizationId,
+              workspaceId: selectedWorkspace.workspaceId,
+              programId,
+              artifactType: draft.artifactType,
+              status: "ready_for_review",
+              sourceTable: "agent_messages",
+              sourceId: assistantMessageRow.id,
+              title: draft.title,
+              summary: draft.summary,
+              artifactPayload: draft.payload,
+              createdByRunId: agentRunId,
+            });
+          }
+
+          await supabase
+            .from("agent_sessions")
+            .update({
+              last_message_at: new Date().toISOString(),
+              session_metadata: json({
+                surface: "pm_create_workspace",
+                workspace_stage: "plan_in_progress",
+                recommended_next_step: "Review assets",
+              }),
+            })
+            .eq("id", activeSessionId);
+
+          await runBestEffort(async () => {
+            const summaryMemoryId = await upsertAgentMemory(supabase, {
+              sessionId: activeSessionId,
+              organizationId,
+              workspaceId: selectedWorkspace.workspaceId,
+              programId,
+              artifactType: "plan",
+              artifactSourceTable: "program_plans",
+              artifactSourceId: planRow.id,
+              memoryScope: "session",
+              memoryKey: "pm_workspace_launch_kit_summary",
+              summary: assistantMessage,
+              memoryPayload: {
+                targets,
+                artifactCount: drafts.length,
+              },
+              confidence: "high",
+              sourceType: "tool_output",
+              sourceRunId: agentRunId,
+            });
+
+            const { stageMemoryId, recommendationMemoryId } =
+              await persistPlannerStateMemory({
+                supabase,
+                sessionId: activeSessionId,
+                organizationId,
+                workspaceId: selectedWorkspace.workspaceId,
+                programId,
+                briefId: activeBriefId,
+                agentRunId,
+                stage: "plan_in_progress",
+                stageLabel: plannerDecision.recommendation.stageLabel,
+                stageTone: plannerDecision.recommendation.stageTone,
+                openQuestionCount,
+                recommendationTitle: plannerDecision.recommendation.title,
+                recommendationBody: plannerDecision.recommendation.body,
+                recommendationActionLabel:
+                  plannerDecision.recommendation.primaryActionLabel,
+              });
+
+            if (draftAssetTaskId) {
+              await updateAgentTaskStatus(supabase, {
+                taskId: draftAssetTaskId,
+                status: "completed",
+                completed: true,
+                outputPayload: {
+                  artifactCount: drafts.length,
+                  targets,
+                },
+              });
+            }
+
+            if (updateMemoryTaskId) {
+              await updateAgentTaskStatus(supabase, {
+                taskId: updateMemoryTaskId,
+                status: "completed",
+                started: true,
+                completed: true,
+                outputPayload: {
+                  summaryMemoryId,
+                  stageMemoryId,
+                  recommendationMemoryId,
+                },
+              });
+            }
+
+            if (recommendationTaskId) {
+              await updateAgentTaskStatus(supabase, {
+                taskId: recommendationTaskId,
+                status: "completed",
+                started: true,
+                completed: true,
+                outputPayload: {
+                  title: plannerDecision.recommendation.title,
+                  body: plannerDecision.recommendation.body,
+                  primaryActionLabel:
+                    plannerDecision.recommendation.primaryActionLabel,
+                },
+              });
+            }
+
+            if (agentRunId) {
+              await updateAgentRunStatus(supabase, {
+                runId: agentRunId,
+                status: "completed",
+                currentTaskId: recommendationTaskId ?? updateMemoryTaskId,
+                summary: plannerDecision.completionSummary,
+                runOutput: {
+                  artifactCount: drafts.length,
+                  targets,
+                },
+                completed: true,
+              });
+            }
+          });
+
+          for (const chunk of chunkText(assistantMessage)) {
+            writeLine(controller, encoder, {
+              type: "delta",
+              text: chunk,
+            });
+            await delay(16);
+          }
+
+          revalidatePath("/app/create");
+          revalidatePath(`/app/create/${activeSessionId}/assets`);
+          writeLine(controller, encoder, {
+            type: "done",
+            status: "assets-generated",
+            sessionId: activeSessionId,
+            workspaceId: selectedWorkspace.workspaceId,
+          });
+          controller.close();
+          return;
+        }
 
         if (!plannerDecision.shouldGenerateBrief) {
           const recommendationPayload = {

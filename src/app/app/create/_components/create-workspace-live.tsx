@@ -884,6 +884,8 @@ function InlineActionStrip({
     typeof payload?.workspaceStage === "string"
       ? payload.workspaceStage
       : null;
+  const hasGeneratedAssets =
+    Array.isArray(payload?.generatedAssets) && payload.generatedAssets.length > 0;
   const isError =
     (message.contentText ?? "").includes("could not") ||
     (message.contentText ?? "").includes("retry");
@@ -923,6 +925,15 @@ function InlineActionStrip({
             Generate execution plan
           </button>
         </form>
+      ) : null}
+
+      {hasGeneratedAssets ? (
+        <Link
+          href={`/app/create/${sessionId}/assets`}
+          className={secondaryActionClassName}
+        >
+          Review asset drafts
+        </Link>
       ) : null}
 
       {canPrepareApprovals ? (
