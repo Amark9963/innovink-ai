@@ -6,12 +6,14 @@ export function CreateMessageComposer({
   workspaceId,
   sessionId,
   defaultMessage,
+  showHelperText = true,
   onOptimisticSubmit,
   onStreamEvent,
 }: {
   workspaceId: string;
   sessionId?: string | null;
   defaultMessage?: string;
+  showHelperText?: boolean;
   onOptimisticSubmit?: (message: string) => void;
   onStreamEvent?: (event: StreamEvent) => void;
 }) {
@@ -104,7 +106,7 @@ export function CreateMessageComposer({
           <ComposerActions isSubmitting={isSubmitting} />
         </div>
         <div className="mt-2 flex items-center justify-between gap-3 px-1 text-[10.5px] text-[#5e7088]">
-          <span>Innova structures your input into a governed brief, plan, and approval flow.</span>
+          <span>{showHelperText ? "Innova structures your input into a governed brief, plan, and approval flow." : ""}</span>
           <span className="shrink-0">{isSubmitting ? "Sending..." : "Enter to send"}</span>
         </div>
       </div>

@@ -1,11 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
-  executeApprovedPlanAction,
-  generateProgramPlanAction,
-  prepareApprovalRequestAction,
-} from "@/app/app/create/actions";
-import {
   AssetStatusBadge,
   deriveAssets,
   type DerivedAsset,
@@ -40,6 +35,36 @@ type WorkspaceLandingPageEditorMessage = {
   role: "user" | "assistant";
   contentText: string;
   createdAt: string;
+};
+
+type WorkspaceStageTone = "amber" | "gold" | "green";
+type ActiveArtifact = "brief" | "plan" | "assets" | "approvals";
+type WorkspacePrimaryAction =
+  | {
+      kind:
+        | "generate_plan"
+        | "prepare_approvals"
+        | "review_approvals"
+        | "execute_approved_plan";
+      label: string;
+      approvalRequestId?: string | null;
+    }
+  | null;
+
+type WorkspaceSecondaryLink = {
+  href: string;
+  label: string;
+} | null;
+
+type DerivedWorkspaceState = {
+  stage: {
+    label: string;
+    tone: WorkspaceStageTone;
+  };
+  activeArtifact: ActiveArtifact;
+  primaryAction: WorkspacePrimaryAction;
+  secondaryLink: WorkspaceSecondaryLink;
+  footerHint: string | null;
 };
 
 const statusCopy: Record<string, string> = {
@@ -162,20 +187,22 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
     : 0;
   const userName = user.user_metadata.full_name ?? user.email ?? "Operator";
   const userInitial = userName.trim().charAt(0).toUpperCase() || "O";
-  const stage = getWorkspaceStage({
+  const workspaceState = deriveWorkspaceState({
+    requestedPanel: params.panel,
+    sessionId: activeSessionId,
     hasBrief: Boolean(data.brief),
     hasPlan: Boolean(data.plan),
     openQuestionCount: briefOpenQuestionCount,
     hasApprovalRequest: hasApprovalHistory,
     hasPendingApproval,
-    isApproved: latestApproval?.status === "approved",
-  });
-  const activeArtifact = resolveActiveArtifact({
-    requestedPanel: params.panel,
-    hasBrief: Boolean(data.brief),
-    hasPlan: Boolean(data.plan),
+    canGeneratePlan,
+    canPrepareApprovals,
+    canExecuteApprovedPlan,
     hasApprovals: hasApprovalHistory || canExecuteApprovedPlan,
+    latestApprovalId: latestApproval?.id ?? null,
   });
+  const stage = workspaceState.stage;
+  const activeArtifact = workspaceState.activeArtifact;
   const assets = deriveAssets(
     data.planItems,
     approvalItems,
@@ -222,24 +249,6 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
         }))
     : [];
   const approvalSensitiveItemCount = data.planItems.filter((item) => item.requiresApproval).length;
-  const currentPrimaryHref = activeSessionId
-    ? activeArtifact === "approvals"
-      ? `/app/create/${activeSessionId}/approvals`
-      : activeArtifact === "assets"
-        ? `/app/create/${activeSessionId}/assets`
-        : activeArtifact === "plan"
-          ? `/app/create/${activeSessionId}/plan`
-          : `/app/create/${activeSessionId}/brief`
-    : null;
-  const currentPrimaryLabel =
-    activeArtifact === "approvals"
-      ? "Review approvals ->"
-      : activeArtifact === "assets"
-        ? "Open asset review ->"
-        : activeArtifact === "plan"
-          ? "Open plan workspace ->"
-          : "Open full brief ->";
-
   return (
     <OperatorShell
       activeNav="ai-workspace"
@@ -470,93 +479,30 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
           </div>
           <div className="border-t border-white/7 bg-[#111e30] px-3 py-3">
             <div className="space-y-2">
-              {canGeneratePlan ? (
-                <form action={generateProgramPlanAction}>
-                  <input type="hidden" name="sessionId" value={activeSessionId ?? ""} />
-                  <button
-                    type="submit"
-                    className="w-full rounded-md bg-[#b08a28] px-4 py-3 text-[12px] font-semibold text-[#06100f] transition hover:bg-[#ccaa4a]"
-                  >
-                    Generate execution plan
-                  </button>
-                </form>
-              ) : hasPendingApproval && activeSessionId ? (
-                <Link
-                  href={`/app/create/${activeSessionId}/approvals`}
-                  className="block w-full rounded-md bg-[#b08a28] px-4 py-3 text-center text-[12px] font-semibold text-[#06100f] transition hover:bg-[#ccaa4a]"
-                >
-                  Review approvals
-                </Link>
-              ) : canPrepareApprovals ? (
-                <form action={prepareApprovalRequestAction}>
-                  <input type="hidden" name="sessionId" value={activeSessionId ?? ""} />
-                  <button
-                    type="submit"
-                    className="w-full rounded-md bg-[#b08a28] px-4 py-3 text-[12px] font-semibold text-[#06100f] transition hover:bg-[#ccaa4a]"
-                  >
-                    Prepare approval packet
-                  </button>
-                </form>
-              ) : canExecuteApprovedPlan ? (
-                <form action={executeApprovedPlanAction}>
-                  <input type="hidden" name="sessionId" value={activeSessionId ?? ""} />
-                  <input type="hidden" name="approvalRequestId" value={latestApproval?.id ?? ""} />
-                  <button
-                    type="submit"
-                    className="w-full rounded-md bg-[#2d7a58] px-4 py-3 text-[12px] font-semibold text-white transition hover:bg-[#3e9a70]"
-                  >
-                    Execute approved foundation
-                  </button>
-                </form>
-              ) : activeArtifact === "assets" && activeSessionId ? (
-                <Link
-                  href={
-                    selectedWorkspaceAsset
-                      ? `/app/create/${activeSessionId}/assets/${selectedWorkspaceAsset.itemKey}`
-                      : `/app/create/${activeSessionId}/assets`
-                  }
-                  className="block w-full rounded-md bg-[#162034] px-4 py-3 text-center text-[12px] font-semibold text-[#eae5dc] transition hover:bg-[#1b2840]"
-                >
-                  {selectedWorkspaceAsset ? "Open full asset review" : "Review asset drafts"}
-                </Link>
-              ) : data.plan && activeSessionId ? (
-                <Link
-                  href={`/app/create/${activeSessionId}/plan`}
-                  className="block w-full rounded-md bg-[#162034] px-4 py-3 text-center text-[12px] font-semibold text-[#eae5dc] transition hover:bg-[#1b2840]"
-                >
-                  Open plan workspace
-                </Link>
-              ) : (
-                <button
-                  type="button"
-                  disabled
-                  className="w-full rounded-md bg-[#b08a28] px-4 py-3 text-[12px] font-semibold text-[#06100f] opacity-45"
-                >
-                  Generate execution plan
-                </button>
-              )}
-              {!canGeneratePlan &&
-              !canPrepareApprovals &&
-              !canExecuteApprovedPlan &&
-              !hasPendingApproval ? (
-                <div className="text-center text-[10px] leading-5 text-[#5e7088]">
-                  {activeArtifact === "assets"
-                    ? selectedWorkspaceAsset
-                      ? "You are refining this asset inside the AI Workspace canvas"
-                      : "Select an asset to open it inside the AI Workspace canvas"
-                    : briefOpenQuestionCount > 0
-                    ? `Requires ${briefOpenQuestionCount} brief inputs to unlock`
-                    : data.plan
-                      ? "Plan is ready for governed review"
-                      : "Next action will unlock automatically"}
+              {workspaceState.primaryAction ? (
+                <div className="rounded-lg border border-white/8 bg-[#0c1525] px-3 py-3">
+                  <div className="text-[9px] font-semibold uppercase tracking-[0.12em] text-[#5e7088]">
+                    Next step
+                  </div>
+                  <div className="mt-2 text-[12px] font-medium text-[#eae5dc]">
+                    {workspaceState.primaryAction.label}
+                  </div>
+                  <div className="mt-1 text-[10.5px] leading-5 text-[#6f8199]">
+                    Use the latest Innova turn in the conversation to continue. The thread is the canonical action surface.
+                  </div>
                 </div>
               ) : null}
-              {currentPrimaryHref && !hasPendingApproval ? (
+              {!workspaceState.primaryAction ? (
+                <div className="text-center text-[10px] leading-5 text-[#5e7088]">
+                  {workspaceState.footerHint}
+                </div>
+              ) : null}
+              {workspaceState.secondaryLink ? (
                 <Link
-                  href={currentPrimaryHref}
+                  href={workspaceState.secondaryLink.href}
                   className="block px-2 py-1 text-center text-[12px] text-[#7f90a6] transition hover:text-[#eae5dc]"
                 >
-                  {currentPrimaryLabel}
+                  {workspaceState.secondaryLink.label}
                 </Link>
               ) : null}
             </div>
@@ -595,12 +541,8 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
           stageLabel={stage.label}
           stageTone={stage.tone}
           userInitial={userInitial}
-          canGeneratePlan={canGeneratePlan}
-          canPrepareApprovals={canPrepareApprovals}
-          canExecuteApprovedPlan={canExecuteApprovedPlan}
-          hasApprovalRequest={hasApprovalHistory}
-          hasPendingApproval={hasPendingApproval}
-          latestApprovalId={latestApproval?.id ?? null}
+          primaryAction={workspaceState.primaryAction}
+          secondaryLink={workspaceState.secondaryLink}
           inlineBriefCard={
             data.brief
               ? {
@@ -900,49 +842,120 @@ function formatSidebarDateTime(value: string | null) {
   }).format(new Date(value));
 }
 
-function getWorkspaceStage({
+function deriveWorkspaceState({
+  requestedPanel,
+  sessionId,
   hasBrief,
   hasPlan,
   openQuestionCount,
   hasApprovalRequest,
   hasPendingApproval,
-  isApproved,
+  canGeneratePlan,
+  canPrepareApprovals,
+  canExecuteApprovedPlan,
+  hasApprovals,
+  latestApprovalId,
 }: {
+  requestedPanel?: string;
+  sessionId: string | null;
   hasBrief: boolean;
   hasPlan: boolean;
   openQuestionCount: number;
   hasApprovalRequest: boolean;
   hasPendingApproval: boolean;
-  isApproved: boolean;
-}) {
-  if (!hasBrief) {
-    return { label: "Drafting brief", tone: "gold" as const };
-  }
+  canGeneratePlan: boolean;
+  canPrepareApprovals: boolean;
+  canExecuteApprovedPlan: boolean;
+  hasApprovals: boolean;
+  latestApprovalId: string | null;
+}): DerivedWorkspaceState {
+  const activeArtifact = resolveActiveArtifact({
+    requestedPanel,
+    hasBrief,
+    hasPlan,
+    hasApprovals,
+  });
 
-  if (!hasPlan) {
-    if (openQuestionCount > 0) {
-      return {
-        label: `${openQuestionCount} ${openQuestionCount === 1 ? "input" : "inputs"} needed`,
-        tone: "amber" as const,
-      };
-    }
+  const stage =
+    !hasBrief
+      ? { label: "Drafting brief", tone: "gold" as const }
+      : !hasPlan
+        ? openQuestionCount > 0
+          ? {
+              label: `${openQuestionCount} ${openQuestionCount === 1 ? "answer" : "answers"} needed`,
+              tone: "amber" as const,
+            }
+          : { label: "Brief ready", tone: "green" as const }
+        : canExecuteApprovedPlan
+          ? { label: "Ready to execute", tone: "green" as const }
+          : hasPendingApproval
+            ? { label: "Ready to review", tone: "gold" as const }
+            : hasApprovalRequest
+              ? { label: "Under review", tone: "gold" as const }
+              : { label: "Plan ready", tone: "green" as const };
 
-    return { label: "Ready for plan", tone: "green" as const };
-  }
+  const primaryAction = canExecuteApprovedPlan
+    ? ({
+        kind: "execute_approved_plan",
+        label: "Execute approved foundation",
+        approvalRequestId: latestApprovalId,
+      } satisfies NonNullable<WorkspacePrimaryAction>)
+    : hasPendingApproval
+      ? ({
+          kind: "review_approvals",
+          label: "Review approvals",
+        } satisfies NonNullable<WorkspacePrimaryAction>)
+      : canPrepareApprovals
+        ? ({
+            kind: "prepare_approvals",
+            label: "Prepare approval packet",
+          } satisfies NonNullable<WorkspacePrimaryAction>)
+        : canGeneratePlan
+          ? ({
+              kind: "generate_plan",
+              label: "Generate execution plan",
+            } satisfies NonNullable<WorkspacePrimaryAction>)
+          : null;
 
-  if (isApproved) {
-    return { label: "Ready to execute", tone: "green" as const };
-  }
+  const secondaryLink = sessionId
+    ? activeArtifact === "approvals"
+      ? {
+          href: `/app/create/${sessionId}/approvals`,
+          label: primaryAction?.kind === "review_approvals" ? "Open approval packet" : "Open approval review",
+        }
+      : activeArtifact === "assets"
+        ? {
+            href: `/app/create/${sessionId}/assets`,
+            label: "Open full asset review",
+          }
+        : activeArtifact === "plan"
+          ? {
+              href: `/app/create/${sessionId}/plan`,
+              label: "Open full plan review",
+            }
+          : {
+              href: `/app/create/${sessionId}/brief`,
+              label: "Open full brief review",
+            }
+    : null;
 
-  if (hasPendingApproval) {
-    return { label: "Approval review", tone: "gold" as const };
-  }
+  const footerHint = primaryAction
+    ? null
+    : activeArtifact === "assets"
+      ? "Select an asset to open it inside the workspace canvas."
+      : openQuestionCount > 0
+        ? `${openQuestionCount} brief ${openQuestionCount === 1 ? "answer is" : "answers are"} still needed.`
+        : hasPlan
+          ? "The plan is available for governed review."
+          : "The next guided step will unlock automatically.";
 
-  if (hasApprovalRequest) {
-    return { label: "Approvals in progress", tone: "gold" as const };
-  }
-
-  return { label: "Ready for approvals", tone: "green" as const };
+  return {
+    stage,
+    activeArtifact,
+    primaryAction,
+    secondaryLink,
+    footerHint,
+  };
 }
 
 function resolveActiveArtifact({

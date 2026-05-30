@@ -29,6 +29,7 @@ export default async function ApprovalsPage({ params, searchParams }: ApprovalsP
   const approvalItems = selectedApproval
     ? await getApprovalRequestItems(supabase, selectedApproval.id)
     : [];
+
   return (
     <OperatorShell
       activeNav="approvals"
@@ -74,56 +75,6 @@ export default async function ApprovalsPage({ params, searchParams }: ApprovalsP
         )}
       </div>
     </OperatorShell>
-  );
-}
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function ApprovalTabs({
-  sessionId,
-  pendingCount,
-  executionCount,
-  planReady,
-}: {
-  sessionId: string;
-  pendingCount: number;
-  executionCount: number;
-  planReady: boolean;
-}) {
-  const tabs = [
-    { label: "Back to AI Workspace", href: `/app/create?session=${sessionId}` },
-    { label: "Brief", href: `/app/create/${sessionId}/brief`, badge: "✓" },
-    { label: "Plan", href: `/app/create/${sessionId}/plan`, badge: planReady ? "✓" : null },
-    { label: "Assets", href: `/app/create/${sessionId}/assets` },
-    { label: "Approvals", href: `/app/create/${sessionId}/approvals`, count: pendingCount || null },
-    { label: "Execution", href: `/app/create/${sessionId}/execution`, count: executionCount || null },
-  ];
-
-  return (
-    <div className="flex items-center gap-2 overflow-x-auto border-b border-white/7 bg-[#0c1525] px-5">
-      {tabs.map((tab) => (
-        <Link
-          key={tab.label}
-          href={tab.href}
-          className={`flex h-11 items-center gap-2 border-b-2 px-3 text-[12px] transition ${
-            tab.label === "Approvals"
-              ? "border-b-[#b08a28] font-semibold text-[#ccaa4a]"
-              : "border-b-transparent text-[#9baabf] hover:text-[#eae5dc]"
-          }`}
-        >
-          <span>{tab.label}</span>
-          {tab.badge ? (
-            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-[#2d7a58] px-1 text-[9px] font-bold text-white">
-              {tab.badge}
-            </span>
-          ) : null}
-          {tab.count ? (
-            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-[#b08a28] px-1 text-[9px] font-bold text-[#07101f]">
-              {tab.count}
-            </span>
-          ) : null}
-        </Link>
-      ))}
-    </div>
   );
 }
 

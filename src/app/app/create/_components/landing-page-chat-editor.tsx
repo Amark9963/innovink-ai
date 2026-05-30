@@ -55,6 +55,12 @@ type StreamingAssistantState = {
   statusBody: string | null;
 };
 
+type RevisionNotice = {
+  id: string;
+  title: string;
+  body: string;
+};
+
 const starterPrompts = [
   "Make the hero more premium and executive-facing.",
   "Introduce the program as employee-only and shorten the overview.",
@@ -78,6 +84,7 @@ export function LandingPageChatEditor({
     useState<StreamingAssistantState | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [revisionNotice, setRevisionNotice] = useState<RevisionNotice | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -205,6 +212,7 @@ export function LandingPageChatEditor({
 
     setIsSubmitting(true);
     setErrorMessage(null);
+    setRevisionNotice(null);
     setOptimisticMessages((current) => [
       ...current,
       {
@@ -297,6 +305,11 @@ export function LandingPageChatEditor({
     }
 
     if (event.type === "done") {
+      setRevisionNotice({
+        id: `${Date.now()}`,
+        title: "New revision created",
+        body: "The latest governed landing-page draft has been saved. Review the preview and continue refining if needed.",
+      });
       setTimeout(() => {
         router.refresh();
       }, 250);
@@ -308,13 +321,13 @@ export function LandingPageChatEditor({
   }
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)]">
+    <div className="grid gap-5 xl:grid-cols-[minmax(340px,0.8fr)_minmax(0,1.2fr)]">
       <section className="flex min-h-[720px] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#111e30]">
         <div className="border-b border-white/7 px-5 py-4">
           <div className="flex items-center justify-between gap-3">
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5e7088]">
-                Claude Page Editor
+                Innova Page Editor
               </div>
               <div className="mt-2 text-[15px] font-semibold text-[#eae5dc]">
                 Refine this landing page conversationally
@@ -361,7 +374,7 @@ export function LandingPageChatEditor({
         <div className="flex-1 overflow-y-auto px-5 py-5">
           {mergedMessages.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-white/10 bg-[#0d1727] px-5 py-5 text-[12px] leading-7 text-[#9baabf]">
-              Start with a natural request like “Make the hero more premium and adjust the colors toward midnight blue and gold,” then review the new page revision in the preview.
+              Start with a natural request like &ldquo;Make the hero more premium and adjust the colors toward midnight blue and gold,&rdquo; then review the new page revision in the preview.
             </div>
           ) : (
             <div className="space-y-6">
@@ -426,6 +439,12 @@ export function LandingPageChatEditor({
         </div>
 
         <div className="border-t border-white/7 px-5 py-4">
+          {revisionNotice ? (
+            <div className="mb-3 rounded-xl border border-[#2d7a5840] bg-[#2d7a5812] px-4 py-3 text-[11.5px] leading-6 text-[#d6f0e4]">
+              <div className="font-semibold text-[#9ad0b7]">{revisionNotice.title}</div>
+              <div className="mt-1">{revisionNotice.body}</div>
+            </div>
+          ) : null}
           {errorMessage ? (
             <div className="mb-3 rounded-xl border border-[#9b3a3a44] bg-[#9b3a3a12] px-4 py-3 text-[11.5px] leading-6 text-[#f1bcbc]">
               {errorMessage}
@@ -463,7 +482,7 @@ export function LandingPageChatEditor({
                 </button>
               </div>
               <div className="mt-2 flex items-center justify-between gap-3 px-1 text-[10.5px] text-[#5e7088]">
-                <span>Claude drafts a new landing-page revision for review. The live page is not changed directly.</span>
+                <span>Innova drafts a new landing-page revision for review. The live page is not changed directly.</span>
                 <span className="shrink-0">{isSubmitting ? "Working..." : "Enter to send"}</span>
               </div>
             </div>

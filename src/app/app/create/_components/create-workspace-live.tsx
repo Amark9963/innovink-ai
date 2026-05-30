@@ -42,12 +42,15 @@ type CreateWorkspaceLiveProps = {
   stageLabel: string;
   stageTone: "amber" | "gold" | "green";
   userInitial: string;
-  canGeneratePlan: boolean;
-  canPrepareApprovals: boolean;
-  canExecuteApprovedPlan: boolean;
-  hasApprovalRequest: boolean;
-  hasPendingApproval: boolean;
-  latestApprovalId: string | null;
+  primaryAction: {
+    kind: "generate_plan" | "prepare_approvals" | "review_approvals" | "execute_approved_plan";
+    label: string;
+    approvalRequestId?: string | null;
+  } | null;
+  secondaryLink: {
+    href: string;
+    label: string;
+  } | null;
   inlineBriefCard?: {
     openQuestionCount: number;
     programType: string | null;
@@ -103,12 +106,8 @@ export function CreateWorkspaceLive({
   stageLabel,
   stageTone,
   userInitial,
-  canGeneratePlan,
-  canPrepareApprovals,
-  canExecuteApprovedPlan,
-  hasApprovalRequest,
-  hasPendingApproval,
-  latestApprovalId,
+  primaryAction,
+  secondaryLink,
   inlineBriefCard,
 }: CreateWorkspaceLiveProps) {
   const router = useRouter();
@@ -533,12 +532,8 @@ export function CreateWorkspaceLive({
                       workspaceId={workspaceId}
                       sessionId={sessionId}
                       latestUserMessage={latestUserMessage}
-                      canGeneratePlan={canGeneratePlan}
-                      canPrepareApprovals={canPrepareApprovals}
-                      canExecuteApprovedPlan={canExecuteApprovedPlan}
-                      hasApprovalRequest={hasApprovalRequest}
-                      hasPendingApproval={hasPendingApproval}
-                      latestApprovalId={latestApprovalId}
+                      primaryAction={primaryAction}
+                      secondaryLink={secondaryLink}
                       inlineBriefCard={message.id === mergedMessages.find((item) => item.role === "assistant")?.id ? inlineBriefCard : null}
                     />
                   ),
@@ -568,6 +563,7 @@ export function CreateWorkspaceLive({
             workspaceId={workspaceId}
             sessionId={sessionId}
             defaultMessage={promptLoaded}
+            showHelperText={mergedMessages.length === 0}
             onOptimisticSubmit={onOptimisticSubmit}
             onStreamEvent={onStreamEvent}
           />
@@ -725,12 +721,8 @@ function AssistantTurn({
   workspaceId,
   sessionId,
   latestUserMessage,
-  canGeneratePlan,
-  canPrepareApprovals,
-  canExecuteApprovedPlan,
-  hasApprovalRequest,
-  hasPendingApproval,
-  latestApprovalId,
+  primaryAction,
+  secondaryLink,
   inlineBriefCard,
 }: {
   message: AgentMessageSummary;
@@ -738,12 +730,8 @@ function AssistantTurn({
   workspaceId: string;
   sessionId: string | null;
   latestUserMessage: string | null;
-  canGeneratePlan: boolean;
-  canPrepareApprovals: boolean;
-  canExecuteApprovedPlan: boolean;
-  hasApprovalRequest: boolean;
-  hasPendingApproval: boolean;
-  latestApprovalId: string | null;
+  primaryAction: CreateWorkspaceLiveProps["primaryAction"];
+  secondaryLink: CreateWorkspaceLiveProps["secondaryLink"];
   inlineBriefCard?: {
     openQuestionCount: number;
     programType: string | null;
@@ -780,19 +768,15 @@ function AssistantTurn({
               <InlineBriefCard brief={inlineBriefCard} />
             ) : null}
             {isLatest && sessionId ? (
-              <InlineActionStrip
-                workspaceId={workspaceId}
-                sessionId={sessionId}
-                latestUserMessage={latestUserMessage}
-                canGeneratePlan={canGeneratePlan}
-                canPrepareApprovals={canPrepareApprovals}
-                canExecuteApprovedPlan={canExecuteApprovedPlan}
-                hasApprovalRequest={hasApprovalRequest}
-                hasPendingApproval={hasPendingApproval}
-                latestApprovalId={latestApprovalId}
-                message={message}
-              />
-            ) : null}
+            <InlineActionStrip
+              workspaceId={workspaceId}
+              sessionId={sessionId}
+              latestUserMessage={latestUserMessage}
+              primaryAction={primaryAction}
+              secondaryLink={secondaryLink}
+              message={message}
+            />
+          ) : null}
           </>
         )}
       </div>
@@ -857,23 +841,15 @@ function InlineActionStrip({
   workspaceId,
   sessionId,
   latestUserMessage,
-  canGeneratePlan,
-  canPrepareApprovals,
-  canExecuteApprovedPlan,
-  hasApprovalRequest,
-  hasPendingApproval,
-  latestApprovalId,
+  primaryAction,
+  secondaryLink,
   message,
 }: {
   workspaceId: string;
   sessionId: string;
   latestUserMessage: string | null;
-  canGeneratePlan: boolean;
-  canPrepareApprovals: boolean;
-  canExecuteApprovedPlan: boolean;
-  hasApprovalRequest: boolean;
-  hasPendingApproval: boolean;
-  latestApprovalId: string | null;
+  primaryAction: CreateWorkspaceLiveProps["primaryAction"];
+  secondaryLink: CreateWorkspaceLiveProps["secondaryLink"];
   message: AgentMessageSummary;
 }) {
   const payload =
@@ -918,16 +894,17 @@ function InlineActionStrip({
         </form>
       ) : null}
 
-      {canGeneratePlan ? (
+      {primaryAction?.kind === "generate_plan" ? (
         <form action={generateProgramPlanAction}>
           <input type="hidden" name="sessionId" value={sessionId} />
           <button type="submit" className={primaryActionClassName}>
-            Generate execution plan
+            {primaryAction.label}
           </button>
         </form>
       ) : null}
 
-      {hasGeneratedAssets ? (
+      {hasGeneratedAssets &&
+      (!secondaryLink || !secondaryLink.href.includes("/assets")) ? (
         <Link
           href={`/app/create/${sessionId}/assets`}
           className={secondaryActionClassName}
@@ -936,49 +913,41 @@ function InlineActionStrip({
         </Link>
       ) : null}
 
-      {canPrepareApprovals ? (
+      {primaryAction?.kind === "prepare_approvals" ? (
         <form action={prepareApprovalRequestAction}>
           <input type="hidden" name="sessionId" value={sessionId} />
           <button type="submit" className={primaryActionClassName}>
-            Prepare approval packet
+            {primaryAction.label}
           </button>
         </form>
       ) : null}
 
-      {hasPendingApproval ? (
+      {primaryAction?.kind === "review_approvals" ? (
         <Link href={`/app/create/${sessionId}/approvals`} className={primaryActionClassName}>
-          Review approvals
+          {primaryAction.label}
         </Link>
       ) : null}
 
-      {canExecuteApprovedPlan && latestApprovalId ? (
+      {primaryAction?.kind === "execute_approved_plan" ? (
         <form action={executeApprovedPlanAction}>
           <input type="hidden" name="sessionId" value={sessionId} />
-          <input type="hidden" name="approvalRequestId" value={latestApprovalId} />
+          <input
+            type="hidden"
+            name="approvalRequestId"
+            value={primaryAction.approvalRequestId ?? ""}
+          />
           <button type="submit" className={primaryActionClassName}>
-            Execute approved foundation
+            {primaryAction.label}
           </button>
         </form>
       ) : null}
 
-      {!hasPendingApproval ? (
+      {secondaryLink ? (
         <Link
-          href={`/app/create/${sessionId}/${getInlineDeepLinkTarget({
-            canGeneratePlan,
-            canPrepareApprovals,
-            canExecuteApprovedPlan,
-            hasApprovalRequest,
-            hasPendingApproval,
-          })}`}
+          href={secondaryLink.href}
           className={secondaryActionClassName}
         >
-          {getInlineDeepLinkLabel({
-            canGeneratePlan,
-            canPrepareApprovals,
-            canExecuteApprovedPlan,
-            hasApprovalRequest,
-            hasPendingApproval,
-          })}
+          {secondaryLink.label}
         </Link>
       ) : null}
     </div>
@@ -1217,62 +1186,6 @@ function useProgressiveRevealText(text: string, enabled: boolean) {
 
 function buildPromptHref(pathname: string, workspaceId: string, prompt: string) {
   return `${pathname}?workspace=${workspaceId}&prompt=${encodeURIComponent(prompt)}`;
-}
-
-function getInlineDeepLinkTarget({
-  canGeneratePlan,
-  canPrepareApprovals,
-  canExecuteApprovedPlan,
-  hasApprovalRequest,
-  hasPendingApproval,
-}: {
-  canGeneratePlan: boolean;
-  canPrepareApprovals: boolean;
-  canExecuteApprovedPlan: boolean;
-  hasApprovalRequest: boolean;
-  hasPendingApproval: boolean;
-}) {
-  if (canExecuteApprovedPlan) {
-    return "execution";
-  }
-
-  if (hasPendingApproval || hasApprovalRequest || canPrepareApprovals) {
-    return "approvals";
-  }
-
-  if (canGeneratePlan) {
-    return "brief";
-  }
-
-  return "plan";
-}
-
-function getInlineDeepLinkLabel({
-  canGeneratePlan,
-  canPrepareApprovals,
-  canExecuteApprovedPlan,
-  hasApprovalRequest,
-  hasPendingApproval,
-}: {
-  canGeneratePlan: boolean;
-  canPrepareApprovals: boolean;
-  canExecuteApprovedPlan: boolean;
-  hasApprovalRequest: boolean;
-  hasPendingApproval: boolean;
-}) {
-  if (canExecuteApprovedPlan) {
-    return "Open execution";
-  }
-
-  if (hasPendingApproval || hasApprovalRequest || canPrepareApprovals) {
-    return "Review approvals";
-  }
-
-  if (canGeneratePlan) {
-    return "Open full brief";
-  }
-
-  return "Open plan workspace";
 }
 
 function humanizeRunType(value: string) {
