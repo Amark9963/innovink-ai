@@ -16,9 +16,15 @@ export async function createSupabaseServerClient() {
           return cookieStore.getAll();
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options),
-          );
+          cookiesToSet.forEach(({ name, value, options }) => {
+            try {
+              cookieStore.set(name, value, options);
+            } catch {
+              // Server Component renders can read auth cookies but cannot mutate them.
+              // Supabase may still attempt a refresh write during read-only requests
+              // like /login, so we ignore that here and rely on actions/routes for writes.
+            }
+          });
         },
       },
     },

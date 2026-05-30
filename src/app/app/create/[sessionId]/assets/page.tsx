@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { OperatorShell } from "@/components/enterprise/operator-shell";
 import { AssetsReviewWorkspace } from "@/app/app/create/_components/assets-review-workspace";
 import { SessionTabs } from "@/app/app/create/_components/session-screen-primitives";
@@ -42,6 +43,14 @@ export default async function DraftAssetsPage({
       userEmail={user.email}
       workspaces={data.workspaces}
       programs={programs}
+      headerActions={
+        <Link
+          href={`/app/create?session=${sessionId}`}
+          className="rounded-md border border-white/10 px-3 py-1.5 text-[11.5px] font-medium text-[#9baabf] transition hover:bg-white/[0.04] hover:text-[#eae5dc]"
+        >
+          Back to AI Workspace
+        </Link>
+      }
       mainClassName="overflow-hidden"
     >
       <div className="flex h-full flex-col bg-[#07101f]">

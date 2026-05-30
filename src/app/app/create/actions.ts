@@ -18,6 +18,10 @@ import {
   updateAgentTaskStatus,
   upsertAgentMemory,
 } from "@/lib/agent-runtime/runtime";
+import {
+  buildPmStageRecommendation,
+  planPmWorkspaceRun,
+} from "@/lib/agent-runtime/planner";
 import { executePmWorkspacePlanStep } from "@/lib/execution/pm-workspace";
 import type { Json } from "@/lib/supabase/database.types";
 import {
@@ -88,25 +92,22 @@ function toJson(value: unknown): Json {
   return JSON.parse(JSON.stringify(value)) as Json;
 }
 
-function determineBriefRunType(currentBrief: Json) {
-  if (
-    currentBrief &&
-    typeof currentBrief === "object" &&
-    !Array.isArray(currentBrief) &&
-    Object.keys(currentBrief as Record<string, unknown>).length > 0
-  ) {
-    return "brief_revision" as const;
-  }
-
-  return "program_bootstrap" as const;
-}
-
 async function runBestEffort(task: () => Promise<void>) {
   try {
     await task();
   } catch (error) {
     console.error("Non-blocking agent runtime trace failure", error);
   }
+}
+
+function isNextRedirectError(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "digest" in error &&
+    typeof (error as { digest?: unknown }).digest === "string" &&
+    (error as { digest: string }).digest.startsWith("NEXT_REDIRECT")
+  );
 }
 
 async function insertAssistantErrorMessage(
@@ -215,6 +216,71 @@ function getBriefObjective(brief: unknown) {
 
   const value = (brief as Record<string, unknown>).objective;
   return typeof value === "string" ? value : null;
+}
+
+async function persistPlannerStateMemory(params: {
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
+  sessionId: string;
+  organizationId: string | null;
+  workspaceId: string;
+  programId: string | null;
+  briefId: string | null;
+  agentRunId: string | null;
+  stage: string;
+  stageLabel: string;
+  stageTone: "gold" | "amber" | "green";
+  openQuestionCount: number;
+  recommendationTitle: string;
+  recommendationBody: string;
+  recommendationActionLabel: string;
+}) {
+  const stageMemoryId = await upsertAgentMemory(params.supabase, {
+    sessionId: params.sessionId,
+    organizationId: params.organizationId,
+    workspaceId: params.workspaceId,
+    programId: params.programId,
+    artifactType: "brief",
+    artifactSourceTable: params.briefId ? "program_briefs" : null,
+    artifactSourceId: params.briefId,
+    memoryScope: "session",
+    memoryKey: "pm_workspace_stage",
+    summary: params.stageLabel,
+    memoryPayload: {
+      stage: params.stage,
+      label: params.stageLabel,
+      tone: params.stageTone,
+      openQuestionCount: params.openQuestionCount,
+    },
+    confidence: "high",
+    sourceType: "derived_summary",
+    sourceRunId: params.agentRunId,
+  });
+
+  const recommendationMemoryId = await upsertAgentMemory(params.supabase, {
+    sessionId: params.sessionId,
+    organizationId: params.organizationId,
+    workspaceId: params.workspaceId,
+    programId: params.programId,
+    artifactType: "brief",
+    artifactSourceTable: params.briefId ? "program_briefs" : null,
+    artifactSourceId: params.briefId,
+    memoryScope: "session",
+    memoryKey: "pm_workspace_recommended_next_step",
+    summary: params.recommendationTitle,
+    memoryPayload: {
+      actionLabel: params.recommendationActionLabel,
+      body: params.recommendationBody,
+      stage: params.stage,
+    },
+    confidence: "high",
+    sourceType: "derived_summary",
+    sourceRunId: params.agentRunId,
+  });
+
+  return {
+    stageMemoryId,
+    recommendationMemoryId,
+  };
 }
 
 async function createAiRequestLog(params: {
@@ -427,37 +493,69 @@ export async function sendCreateAgentMessageAction(formData: FormData) {
     })
     .eq("id", sessionId);
 
-  const [{ data: briefRow, error: briefError }, { data: messageRows, error: historyError }] =
-    await Promise.all([
-      supabase
-        .from("program_briefs")
-        .select(
-          "id, organization_id, workspace_id, program_id, title, detected_program_type, status, confidence_level, current_brief, assumptions, open_questions, active_version_id",
-        )
-        .eq("id", briefId)
-        .single(),
-      supabase
-        .from("agent_messages")
-        .select("role, content_text")
-        .eq("session_id", sessionId)
-        .order("created_at", { ascending: true })
-        .limit(14),
-    ]);
+  const [
+    { data: briefRow, error: briefError },
+    { data: messageRows, error: historyError },
+    { data: approvalRows, error: approvalError },
+  ] = await Promise.all([
+    supabase
+      .from("program_briefs")
+      .select(
+        "id, organization_id, workspace_id, program_id, title, detected_program_type, status, confidence_level, current_brief, assumptions, open_questions, active_version_id, active_plan_id",
+      )
+      .eq("id", briefId)
+      .single(),
+    supabase
+      .from("agent_messages")
+      .select("role, content_text")
+      .eq("session_id", sessionId)
+      .order("created_at", { ascending: true })
+      .limit(14),
+    supabase
+      .from("approval_requests")
+      .select("status")
+      .eq("brief_id", briefId)
+      .order("requested_at", { ascending: false })
+      .limit(8),
+  ]);
 
-  if (briefError || !briefRow || historyError) {
+  if (briefError || !briefRow || historyError || approvalError) {
     redirect(
       buildCreateRoute({
         sessionId,
         workspaceId: selectedWorkspace.workspaceId,
-        error: briefError?.message ?? historyError?.message ?? "Unable to load current agent state.",
+        error:
+          briefError?.message ??
+          historyError?.message ??
+          approvalError?.message ??
+          "Unable to load current agent state.",
       }),
     );
   }
+
+  const hasPendingApproval = (approvalRows ?? []).some(
+    (approval) => approval.status === "pending",
+  );
+  const isApproved = (approvalRows ?? []).some(
+    (approval) => approval.status === "approved",
+  );
+  const openQuestionCount = Array.isArray(briefRow.open_questions)
+    ? briefRow.open_questions.length
+    : 0;
+  const plannerDecision = planPmWorkspaceRun({
+    message: parsed.data.message,
+    currentBrief: briefRow.current_brief,
+    openQuestionCount,
+    hasPlan: Boolean(briefRow.active_plan_id),
+    hasPendingApproval,
+    isApproved,
+  });
 
   let agentRunId: string | null = null;
   let draftBriefTaskId: string | null = null;
   let validateBriefTaskId: string | null = null;
   let updateMemoryTaskId: string | null = null;
+  let recommendationTaskId: string | null = null;
   let draftBriefToolCallId: string | null = null;
   const draftBriefToolStartedAt = new Date();
 
@@ -468,13 +566,17 @@ export async function sendCreateAgentMessageAction(formData: FormData) {
       organizationId,
       workspaceId: selectedWorkspace.workspaceId,
       programId,
-      runType: determineBriefRunType(briefRow.current_brief),
+      runType: plannerDecision.runType,
       goalText: parsed.data.message,
       userInstruction: parsed.data.message,
       startedBy: user.id,
       plannerModel: "pm_workspace_v1",
-      executorModel: "generate-program-agent-draft",
+      executorModel: plannerDecision.shouldGenerateBrief
+        ? "generate-program-agent-draft"
+        : "pm_workspace_planner_v1",
       runInput: {
+        plannerIntent: plannerDecision.intent,
+        workspaceStage: plannerDecision.stage,
         workspaceName: selectedWorkspace.workspaceName,
         organizationName: selectedWorkspace.organizationName,
         existingBriefState: briefRow.status,
@@ -485,7 +587,7 @@ export async function sendCreateAgentMessageAction(formData: FormData) {
     await updateAgentRunStatus(supabase, {
       runId: run.id,
       status: "planning",
-      summary: "Inspecting workspace context and planning the next PM agent steps.",
+      summary: plannerDecision.planningSummary,
     });
 
     await recordAgentEvent(supabase, {
@@ -499,69 +601,54 @@ export async function sendCreateAgentMessageAction(formData: FormData) {
       body: "Innova started a new workspace run from the latest program instruction.",
       eventPayload: {
         runType: run.run_type,
+        plannerIntent: plannerDecision.intent,
+        workspaceStage: plannerDecision.stage,
       },
     });
 
-    await createAgentRunTask(supabase, {
-      runId: run.id,
-      taskType: "inspect_context",
-      title: "Inspect workspace and current brief context",
-      description: "Load the workspace, brief, conversation, and current PM instruction before drafting.",
-      displayOrder: 10,
-      status: "completed",
-      inputPayload: {
-        workspaceId: selectedWorkspace.workspaceId,
-        briefId,
-      },
-    });
+    for (const taskBlueprint of plannerDecision.taskPlan) {
+      const task = await createAgentRunTask(supabase, {
+        runId: run.id,
+        taskType: taskBlueprint.taskType,
+        title: taskBlueprint.title,
+        description: taskBlueprint.description,
+        displayOrder: taskBlueprint.displayOrder,
+        status:
+          taskBlueprint.taskType === "inspect_context" ? "completed" : "pending",
+        inputPayload:
+          taskBlueprint.taskType === "inspect_context"
+            ? {
+                workspaceId: selectedWorkspace.workspaceId,
+                briefId,
+              }
+            : taskBlueprint.taskType === "draft_brief"
+              ? {
+                  latestUserMessage: parsed.data.message,
+                }
+              : undefined,
+      });
 
-    const draftTask = await createAgentRunTask(supabase, {
-      runId: run.id,
-      taskType: "draft_brief",
-      title: "Draft the structured brief",
-      description: "Generate the next brief revision from the current PM instruction and workspace context.",
-      displayOrder: 20,
-      inputPayload: {
-        latestUserMessage: parsed.data.message,
-      },
-    });
-    draftBriefTaskId = draftTask.id;
+      if (taskBlueprint.taskType === "draft_brief") {
+        draftBriefTaskId = task.id;
+      }
 
-    const validateTask = await createAgentRunTask(supabase, {
-      runId: run.id,
-      taskType: "validate_output",
-      title: "Validate the generated brief",
-      description: "Validate the returned structured brief and readiness state.",
-      displayOrder: 30,
-    });
-    validateBriefTaskId = validateTask.id;
+      if (taskBlueprint.taskType === "validate_output") {
+        validateBriefTaskId = task.id;
+      }
 
-    const memoryTask = await createAgentRunTask(supabase, {
-      runId: run.id,
-      taskType: "update_memory",
-      title: "Persist the distilled session memory",
-      description: "Store the important conclusions and unresolved questions for later runs.",
-      displayOrder: 40,
-    });
-    updateMemoryTaskId = memoryTask.id;
+      if (taskBlueprint.taskType === "update_memory") {
+        updateMemoryTaskId = task.id;
+      }
 
-    await updateAgentRunStatus(supabase, {
-      runId: run.id,
-      status: "running",
-      currentTaskId: draftTask.id,
-      summary: "Drafting the structured brief from the latest PM instruction.",
-    });
-
-    await updateAgentTaskStatus(supabase, {
-      taskId: draftTask.id,
-      status: "running",
-      started: true,
-    });
+      if (taskBlueprint.taskType === "emit_recommendation") {
+        recommendationTaskId = task.id;
+      }
+    }
 
     await recordAgentEvent(supabase, {
       sessionId,
       runId: run.id,
-      taskId: draftTask.id,
+      taskId: draftBriefTaskId ?? recommendationTaskId,
       organizationId,
       workspaceId: selectedWorkspace.workspaceId,
       programId,
@@ -569,46 +656,234 @@ export async function sendCreateAgentMessageAction(formData: FormData) {
       title: "Run planned",
       body: "Innova prepared the initial task sequence for this PM workspace run.",
       eventPayload: {
-        taskTypes: [
-          "inspect_context",
-          "draft_brief",
-          "validate_output",
-          "update_memory",
-        ],
+        plannerIntent: plannerDecision.intent,
+        taskTypes: plannerDecision.taskPlan.map((task) => task.taskType),
       },
     });
 
-    const toolCall = await recordAgentToolCall(supabase, {
-      runId: run.id,
-      taskId: draftTask.id,
-      sessionId,
-      organizationId,
-      workspaceId: selectedWorkspace.workspaceId,
-      programId,
-      toolName: "draft_program_brief",
-      inputPayload: {
-        briefId,
-        latestUserMessage: parsed.data.message,
-      },
-    });
-    draftBriefToolCallId = toolCall.id;
+    if (plannerDecision.shouldGenerateBrief && draftBriefTaskId) {
+      await updateAgentRunStatus(supabase, {
+        runId: run.id,
+        status: "running",
+        currentTaskId: draftBriefTaskId,
+        summary: plannerDecision.runningSummary,
+      });
 
-    await recordAgentEvent(supabase, {
-      sessionId,
-      runId: run.id,
-      taskId: draftTask.id,
-      toolCallId: toolCall.id,
-      organizationId,
-      workspaceId: selectedWorkspace.workspaceId,
-      programId,
-      eventType: "tool_call_started",
-      title: "Drafting the structured brief",
-      body: "Innova is generating the next structured brief revision.",
-      eventPayload: {
+      await updateAgentTaskStatus(supabase, {
+        taskId: draftBriefTaskId,
+        status: "running",
+        started: true,
+      });
+
+      const toolCall = await recordAgentToolCall(supabase, {
+        runId: run.id,
+        taskId: draftBriefTaskId,
+        sessionId,
+        organizationId,
+        workspaceId: selectedWorkspace.workspaceId,
+        programId,
         toolName: "draft_program_brief",
-      },
-    });
+        inputPayload: {
+          briefId,
+          latestUserMessage: parsed.data.message,
+          plannerIntent: plannerDecision.intent,
+        },
+      });
+      draftBriefToolCallId = toolCall.id;
+
+      await recordAgentEvent(supabase, {
+        sessionId,
+        runId: run.id,
+        taskId: draftBriefTaskId,
+        toolCallId: toolCall.id,
+        organizationId,
+        workspaceId: selectedWorkspace.workspaceId,
+        programId,
+        eventType: "tool_call_started",
+        title: "Drafting the structured brief",
+        body: "Innova is generating the next structured brief revision.",
+        eventPayload: {
+          toolName: "draft_program_brief",
+          plannerIntent: plannerDecision.intent,
+        },
+      });
+    }
   });
+
+  if (!plannerDecision.shouldGenerateBrief) {
+    const recommendationPayload = {
+      plannerIntent: plannerDecision.intent,
+      workspaceStage: plannerDecision.stage,
+      primaryActionLabel: plannerDecision.recommendation.primaryActionLabel,
+      stageLabel: plannerDecision.recommendation.stageLabel,
+      stageTone: plannerDecision.recommendation.stageTone,
+      blockingOpenInputCount: plannerDecision.recommendation.blockingOpenInputCount,
+    };
+
+    await runBestEffort(async () => {
+      if (agentRunId) {
+        await updateAgentRunStatus(supabase, {
+          runId: agentRunId,
+          status: "running",
+          currentTaskId: recommendationTaskId,
+          summary: plannerDecision.runningSummary,
+        });
+      }
+
+      if (recommendationTaskId) {
+        await updateAgentTaskStatus(supabase, {
+          taskId: recommendationTaskId,
+          status: "running",
+          started: true,
+        });
+      }
+    });
+
+    await supabase.from("agent_messages").insert({
+      session_id: sessionId,
+      brief_id: briefId,
+      role: "assistant",
+      kind: "chat",
+      content_text: plannerDecision.recommendation.body,
+      content_payload: toJson(recommendationPayload),
+    });
+
+    await supabase
+      .from("agent_sessions")
+      .update({
+        last_message_at: new Date().toISOString(),
+        session_metadata: toJson({
+          surface: "pm_create_workspace",
+          workspace_stage: plannerDecision.stage,
+          recommended_next_step:
+            plannerDecision.recommendation.primaryActionLabel,
+        }),
+      })
+      .eq("id", sessionId);
+
+    await runBestEffort(async () => {
+      if (recommendationTaskId) {
+        await updateAgentTaskStatus(supabase, {
+          taskId: recommendationTaskId,
+          status: "completed",
+          started: true,
+          completed: true,
+          outputPayload: recommendationPayload,
+        });
+      }
+
+      const { stageMemoryId, recommendationMemoryId } =
+        await persistPlannerStateMemory({
+          supabase,
+          sessionId,
+          organizationId,
+          workspaceId: selectedWorkspace.workspaceId,
+          programId,
+          briefId,
+          agentRunId,
+          stage: plannerDecision.stage,
+          stageLabel: plannerDecision.recommendation.stageLabel,
+          stageTone: plannerDecision.recommendation.stageTone,
+          openQuestionCount,
+          recommendationTitle: plannerDecision.recommendation.title,
+          recommendationBody: plannerDecision.recommendation.body,
+          recommendationActionLabel:
+            plannerDecision.recommendation.primaryActionLabel,
+        });
+
+      if (updateMemoryTaskId) {
+        await updateAgentTaskStatus(supabase, {
+          taskId: updateMemoryTaskId,
+          status: "completed",
+          started: true,
+          completed: true,
+          outputPayload: {
+            stageMemoryId,
+            recommendationMemoryId,
+          },
+        });
+      }
+
+      await recordAgentEvent(supabase, {
+        sessionId,
+        runId: agentRunId,
+        taskId: recommendationTaskId,
+        organizationId,
+        workspaceId: selectedWorkspace.workspaceId,
+        programId,
+        eventType: "recommendation_created",
+        title: plannerDecision.recommendation.title,
+        body: plannerDecision.recommendation.body,
+        eventPayload: recommendationPayload,
+      });
+
+      await recordAgentEvent(supabase, {
+        sessionId,
+        runId: agentRunId,
+        taskId: updateMemoryTaskId,
+        organizationId,
+        workspaceId: selectedWorkspace.workspaceId,
+        programId,
+        eventType: "memory_updated",
+        title: "Workspace memory updated",
+        body: "Innova stored the current workspace stage and the next recommended PM action.",
+        eventPayload: {
+          stageMemoryId,
+          recommendationMemoryId,
+        },
+      });
+
+      if (agentRunId) {
+        const runStatus =
+          plannerDecision.stage === "brief_clarification" ||
+          plannerDecision.stage === "goal_definition" ||
+          plannerDecision.stage === "approval_review"
+            ? "waiting_for_input"
+            : "completed";
+
+        await updateAgentRunStatus(supabase, {
+          runId: agentRunId,
+          status: runStatus,
+          currentTaskId: recommendationTaskId ?? updateMemoryTaskId,
+          summary:
+            runStatus === "waiting_for_input"
+              ? plannerDecision.waitingSummary
+              : plannerDecision.completionSummary,
+          runOutput: recommendationPayload,
+          completed: runStatus === "completed",
+        });
+
+        await recordAgentEvent(supabase, {
+          sessionId,
+          runId: agentRunId,
+          taskId: recommendationTaskId ?? updateMemoryTaskId,
+          organizationId,
+          workspaceId: selectedWorkspace.workspaceId,
+          programId,
+          eventType:
+            runStatus === "waiting_for_input" ? "needs_input" : "run_completed",
+          title:
+            runStatus === "waiting_for_input"
+              ? "PM input needed"
+              : "Recommendation run completed",
+          body:
+            runStatus === "waiting_for_input"
+              ? plannerDecision.recommendation.body
+              : "Innova completed the PM workspace recommendation run.",
+          eventPayload: recommendationPayload,
+        });
+      }
+    });
+
+    revalidatePath("/app/create");
+    redirect(
+      buildCreateRoute({
+        sessionId,
+        workspaceId: selectedWorkspace.workspaceId,
+        status: "workspace-guidance",
+      }),
+    );
+  }
 
   const aiRequestId = await createAiRequestLog({
     featureKey: "pm_agent_brief_generation",
@@ -744,6 +1019,12 @@ export async function sendCreateAgentMessageAction(formData: FormData) {
         briefDraft.usage?.total_tokens ??
         ((briefDraft.usage?.input_tokens ?? 0) +
           (briefDraft.usage?.output_tokens ?? 0)),
+    });
+
+    const nextOpenQuestionCount = briefDraft.result.openQuestions.length;
+    const nextRecommendation = buildPmStageRecommendation({
+      stage: nextOpenQuestionCount > 0 ? "brief_clarification" : "brief_ready",
+      openQuestionCount: nextOpenQuestionCount,
     });
 
     await runBestEffort(async () => {
@@ -890,6 +1171,24 @@ export async function sendCreateAgentMessageAction(formData: FormData) {
         sourceRunId: agentRunId,
       });
 
+      const { stageMemoryId, recommendationMemoryId } =
+        await persistPlannerStateMemory({
+          supabase,
+          sessionId,
+          organizationId,
+          workspaceId: selectedWorkspace.workspaceId,
+          programId,
+          briefId,
+          agentRunId,
+          stage: nextOpenQuestionCount > 0 ? "brief_clarification" : "brief_ready",
+          stageLabel: nextRecommendation.stageLabel,
+          stageTone: nextRecommendation.stageTone,
+          openQuestionCount: nextOpenQuestionCount,
+          recommendationTitle: nextRecommendation.title,
+          recommendationBody: nextRecommendation.body,
+          recommendationActionLabel: nextRecommendation.primaryActionLabel,
+        });
+
       if (updateMemoryTaskId) {
         await updateAgentTaskStatus(supabase, {
           taskId: updateMemoryTaskId,
@@ -899,6 +1198,8 @@ export async function sendCreateAgentMessageAction(formData: FormData) {
           outputPayload: {
             summaryMemoryId,
             questionMemoryId,
+            stageMemoryId,
+            recommendationMemoryId,
           },
         });
       }
@@ -916,50 +1217,82 @@ export async function sendCreateAgentMessageAction(formData: FormData) {
         eventPayload: {
           summaryMemoryId,
           questionMemoryId,
+          stageMemoryId,
+          recommendationMemoryId,
         },
       });
 
-      if (agentRunId) {
-        await updateAgentRunStatus(supabase, {
-          runId: agentRunId,
-          status:
-            briefDraft.result.openQuestions.length > 0
-              ? "waiting_for_input"
-              : "completed",
-          currentTaskId: updateMemoryTaskId,
-          summary:
-            briefDraft.result.openQuestions.length > 0
-              ? "The brief draft is ready, and Innova is waiting for PM clarification on the remaining questions."
-              : "The brief draft is complete and ready for the planning stage.",
-          runOutput: {
-            briefId,
-            briefVersionId: versionRow.id,
-            briefStatus: briefDraft.result.status,
+      if (recommendationTaskId) {
+        await updateAgentTaskStatus(supabase, {
+          taskId: recommendationTaskId,
+          status: "completed",
+          started: true,
+          completed: true,
+          outputPayload: {
+            title: nextRecommendation.title,
+            body: nextRecommendation.body,
+            primaryActionLabel: nextRecommendation.primaryActionLabel,
+            stageLabel: nextRecommendation.stageLabel,
           },
-          completed: briefDraft.result.openQuestions.length === 0,
         });
       }
 
       await recordAgentEvent(supabase, {
         sessionId,
         runId: agentRunId,
-        taskId: updateMemoryTaskId,
+        taskId: recommendationTaskId,
         organizationId,
         workspaceId: selectedWorkspace.workspaceId,
         programId,
-        eventType:
-          briefDraft.result.openQuestions.length > 0 ? "needs_input" : "run_completed",
+        eventType: "recommendation_created",
+        title: nextRecommendation.title,
+        body: nextRecommendation.body,
+        eventPayload: {
+          stage: nextOpenQuestionCount > 0 ? "brief_clarification" : "brief_ready",
+          primaryActionLabel: nextRecommendation.primaryActionLabel,
+          blockingOpenInputCount: nextRecommendation.blockingOpenInputCount,
+        },
+      });
+
+      if (agentRunId) {
+        await updateAgentRunStatus(supabase, {
+          runId: agentRunId,
+          status: nextOpenQuestionCount > 0 ? "waiting_for_input" : "completed",
+          currentTaskId: recommendationTaskId ?? updateMemoryTaskId,
+          summary:
+            nextOpenQuestionCount > 0
+              ? plannerDecision.waitingSummary
+              : plannerDecision.completionSummary,
+          runOutput: {
+            briefId,
+            briefVersionId: versionRow.id,
+            briefStatus: briefDraft.result.status,
+            primaryActionLabel: nextRecommendation.primaryActionLabel,
+          },
+          completed: nextOpenQuestionCount === 0,
+        });
+      }
+
+      await recordAgentEvent(supabase, {
+        sessionId,
+        runId: agentRunId,
+        taskId: recommendationTaskId ?? updateMemoryTaskId,
+        organizationId,
+        workspaceId: selectedWorkspace.workspaceId,
+        programId,
+        eventType: nextOpenQuestionCount > 0 ? "needs_input" : "run_completed",
         title:
-          briefDraft.result.openQuestions.length > 0
+          nextOpenQuestionCount > 0
             ? "PM clarification needed"
             : "Brief run completed",
         body:
-          briefDraft.result.openQuestions.length > 0
-            ? "Innova needs clarification on the remaining brief questions before moving cleanly into plan generation."
+          nextOpenQuestionCount > 0
+            ? nextRecommendation.body
             : "Innova completed the brief run and the workspace is ready for planning.",
         eventPayload: {
-          openQuestionCount: briefDraft.result.openQuestions.length,
+          openQuestionCount: nextOpenQuestionCount,
           briefStatus: briefDraft.result.status,
+          primaryActionLabel: nextRecommendation.primaryActionLabel,
         },
       });
     });
@@ -976,6 +1309,10 @@ export async function sendCreateAgentMessageAction(formData: FormData) {
       }),
     );
   } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
     await finalizeAiRequestLog({
       aiRequestId,
       featureKey: "pm_agent_brief_generation",
@@ -1653,6 +1990,10 @@ export async function generateProgramPlanAction(formData: FormData) {
       }),
     );
   } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
     await finalizeAiRequestLog({
       aiRequestId,
       featureKey: "pm_agent_plan_generation",
@@ -1917,6 +2258,8 @@ export async function prepareApprovalRequestAction(formData: FormData) {
     content_payload: toJson({
       approvalRequestId: approvalRequest.id,
       itemCount: approvalItems.length,
+      workspaceStage: "approval_review",
+      primaryActionLabel: "Review approvals",
     }),
   });
 
@@ -1933,6 +2276,8 @@ export async function prepareApprovalRequestAction(formData: FormData) {
     .eq("id", session.id);
 
   revalidatePath("/app/create");
+  revalidatePath(`/app/create/${session.id}/plan`);
+  revalidatePath(`/app/create/${session.id}/approvals`);
   if (parsed.data.redirectTo === "approvals") {
     redirect(`/app/create/${session.id}/approvals`);
   }
@@ -2487,6 +2832,10 @@ export async function executeApprovedPlanAction(formData: FormData) {
       }),
     );
   } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
     await Promise.all([
       supabase
         .from("execution_runs")

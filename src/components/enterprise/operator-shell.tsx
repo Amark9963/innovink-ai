@@ -33,6 +33,9 @@ type OperatorShellProps = {
   programs: ProgramAccessRow[];
   sessionId?: string | null;
   programSetupNavOnly?: boolean;
+  workspacePrimaryMode?: boolean;
+  hideSidebar?: boolean;
+  hideHeader?: boolean;
   children: React.ReactNode;
   mainClassName?: string;
 };
@@ -51,6 +54,9 @@ export function OperatorShell({
   programs,
   sessionId,
   programSetupNavOnly = false,
+  workspacePrimaryMode = false,
+  hideSidebar = false,
+  hideHeader = false,
   children,
   mainClassName,
 }: OperatorShellProps) {
@@ -60,14 +66,32 @@ export function OperatorShell({
   return (
     <div
       className={cn(
-        "grid min-h-screen grid-rows-[56px_1fr] bg-[#07101f] text-[#eae5dc]",
-        rightPanel
-          ? "grid-cols-[220px_minmax(0,1fr)_380px] [grid-template-areas:'hdr_hdr_hdr''nav_main_pnl']"
-          : "grid-cols-[220px_minmax(0,1fr)] [grid-template-areas:'hdr_hdr''nav_main']",
+        "grid min-h-screen bg-[#07101f] text-[#eae5dc]",
+        hideHeader
+          ? hideSidebar
+            ? rightPanel
+              ? "grid-rows-[1fr] grid-cols-[minmax(0,1fr)_296px] [grid-template-areas:'main_pnl']"
+              : "grid-rows-[1fr] grid-cols-[minmax(0,1fr)] [grid-template-areas:'main']"
+            : rightPanel
+              ? "grid-rows-[1fr] grid-cols-[220px_minmax(0,1fr)_296px] [grid-template-areas:'nav_main_pnl']"
+              : "grid-rows-[1fr] grid-cols-[220px_minmax(0,1fr)] [grid-template-areas:'nav_main']"
+          : hideSidebar
+            ? rightPanel
+              ? "grid-rows-[56px_1fr] grid-cols-[minmax(0,1fr)_296px] [grid-template-areas:'hdr_hdr''main_pnl']"
+              : "grid-rows-[56px_1fr] grid-cols-[minmax(0,1fr)] [grid-template-areas:'hdr''main']"
+            : rightPanel
+              ? "grid-rows-[56px_1fr] grid-cols-[220px_minmax(0,1fr)_380px] [grid-template-areas:'hdr_hdr_hdr''nav_main_pnl']"
+              : "grid-rows-[56px_1fr] grid-cols-[220px_minmax(0,1fr)] [grid-template-areas:'hdr_hdr''nav_main']",
       )}
     >
+      {hideHeader ? null : (
       <header className="[grid-area:hdr] flex items-center border-b border-white/7 bg-[#0c1525]">
-        <div className="flex h-full w-[220px] items-center gap-3 border-r border-white/7 px-4">
+        <div
+          className={cn(
+            "flex h-full items-center gap-3 px-4",
+            hideSidebar ? "min-w-[180px]" : "w-[220px] border-r border-white/7",
+          )}
+        >
           <div className="flex h-8 w-8 items-center justify-center rounded-md border border-[#b08a2838] bg-[#b08a281a] text-[13px] font-bold tracking-tight text-[#ccaa4a]">
             IN
           </div>
@@ -118,10 +142,12 @@ export function OperatorShell({
           </form>
         </div>
       </header>
+      )}
 
-      <aside className="[grid-area:nav] flex flex-col overflow-hidden border-r border-white/7 bg-[#0c1525]">
+      {hideSidebar ? null : (
+        <aside className="[grid-area:nav] flex flex-col overflow-hidden border-r border-white/7 bg-[#0c1525]">
         <div className="px-[15px] pb-1 pt-3 text-[9px] font-semibold uppercase tracking-[0.12em] text-[#374d65]">
-          Workspace
+          {workspacePrimaryMode ? "Navigation" : "Workspace"}
         </div>
         <ShellNavLink href="/app/dashboard" isActive={activeNav === "overview"} label="Overview" />
         <ShellNavLink
@@ -129,43 +155,47 @@ export function OperatorShell({
           isActive={activeNav === "ai-workspace"}
           label="AI Workspace"
         />
-        <ShellNavLink
-          href={sessionId ? `/app/create/${sessionId}/brief` : "/app/create"}
-          isActive={activeNav === "program-brief"}
-          label="Program Brief"
-          disabled={!sessionId}
-        />
-        <ShellNavLink
-          href={sessionId ? `/app/create/${sessionId}/plan` : "/app/create"}
-          isActive={activeNav === "execution-plan"}
-          label="Execution Plan"
-          disabled={!sessionId}
-        />
-        <ShellNavLink
-          href={sessionId ? `/app/create/${sessionId}/assets` : "/app/create"}
-          isActive={activeNav === "draft-assets"}
-          label="Draft Assets"
-          disabled={!sessionId}
-        />
-        {programSetupNavOnly ? null : (
+        {workspacePrimaryMode ? null : (
           <>
-            <ShellNavPlaceholder label="Submissions" />
-            <ShellNavPlaceholder label="Judging" />
-            <ShellNavPlaceholder label="Reports" />
+            <ShellNavLink
+              href={sessionId ? `/app/create/${sessionId}/brief` : "/app/create"}
+              isActive={activeNav === "program-brief"}
+              label="Program Brief"
+              disabled={!sessionId}
+            />
+            <ShellNavLink
+              href={sessionId ? `/app/create/${sessionId}/plan` : "/app/create"}
+              isActive={activeNav === "execution-plan"}
+              label="Execution Plan"
+              disabled={!sessionId}
+            />
+            <ShellNavLink
+              href={sessionId ? `/app/create/${sessionId}/assets` : "/app/create"}
+              isActive={activeNav === "draft-assets"}
+              label="Draft Assets"
+              disabled={!sessionId}
+            />
+            {programSetupNavOnly ? null : (
+              <>
+                <ShellNavPlaceholder label="Submissions" />
+                <ShellNavPlaceholder label="Judging" />
+                <ShellNavPlaceholder label="Reports" />
+              </>
+            )}
+            <ShellNavLink
+              href={sessionId ? `/app/create/${sessionId}/approvals` : "/app/create"}
+              isActive={activeNav === "approvals"}
+              label="Approvals"
+              disabled={!sessionId}
+            />
+            <ShellNavLink
+              href={sessionId ? `/app/create/${sessionId}/execution` : "/app/create"}
+              isActive={activeNav === "execution"}
+              label="Execution"
+              disabled={!sessionId}
+            />
           </>
         )}
-        <ShellNavLink
-          href={sessionId ? `/app/create/${sessionId}/approvals` : "/app/create"}
-          isActive={activeNav === "approvals"}
-          label="Approvals"
-          disabled={!sessionId}
-        />
-        <ShellNavLink
-          href={sessionId ? `/app/create/${sessionId}/execution` : "/app/create"}
-          isActive={activeNav === "execution"}
-          label="Execution"
-          disabled={!sessionId}
-        />
         <div className="my-2 h-px bg-white/7" />
 
         <div className="px-[15px] pb-1 pt-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-[#374d65]">
@@ -220,7 +250,8 @@ export function OperatorShell({
             </div>
           </div>
         </div>
-      </aside>
+        </aside>
+      )}
 
       <main className={cn("[grid-area:main] overflow-y-auto bg-[#07101f]", mainClassName)}>
         {children}

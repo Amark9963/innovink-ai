@@ -1,19 +1,19 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useFormStatus } from "react-dom";
-import { sendCreateAgentMessageAction } from "@/app/app/create/actions";
 
 export function CreateMessageComposer({
   workspaceId,
   sessionId,
   defaultMessage,
   onOptimisticSubmit,
+  onStreamEvent,
 }: {
   workspaceId: string;
   sessionId?: string | null;
   defaultMessage?: string;
   onOptimisticSubmit?: (message: string) => void;
+  onStreamEvent?: (event: StreamEvent) => void;
 }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -21,18 +21,74 @@ export function CreateMessageComposer({
   return (
     <form
       key={`composer-form-${sessionId ?? "new"}-${defaultMessage ?? ""}`}
-      action={sendCreateAgentMessageAction}
-      onSubmit={() => {
-        setIsSubmitting(true);
+      onSubmit={async (event) => {
+        event.preventDefault();
+        if (isSubmitting) {
+          return;
+        }
+
         const message = textareaRef.current?.value?.trim();
-        if (message) {
-          onOptimisticSubmit?.(message);
+        if (!message || message.length < 8) {
+          return;
+        }
+
+        setIsSubmitting(true);
+        onOptimisticSubmit?.(message);
+
+        try {
+          const response = await fetch("/api/pm-workspace/chat", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              workspaceId,
+              sessionId,
+              message,
+            }),
+          });
+
+          if (!response.ok || !response.body) {
+            throw new Error("The PM workspace could not open a live stream.");
+          }
+
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+              break;
+            }
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() ?? "";
+
+            for (const line of lines) {
+              if (!line.trim()) {
+                continue;
+              }
+              onStreamEvent?.(JSON.parse(line) as StreamEvent);
+            }
+          }
+
+          textareaRef.current!.value = "";
+        } catch (error) {
+          onStreamEvent?.({
+            type: "error",
+            message:
+              error instanceof Error
+                ? error.message
+                : "The PM workspace could not send that instruction.",
+          });
+        } finally {
+          setIsSubmitting(false);
         }
       }}
     >
-      <input type="hidden" name="workspaceId" value={workspaceId} />
-      {sessionId ? <input type="hidden" name="sessionId" value={sessionId} /> : null}
-      <div className="rounded-xl border border-white/10 bg-[#0a1422] px-4 py-3">
+      <div className="rounded-[22px] border border-white/8 bg-[#0b1423] px-4 py-3 shadow-[0_-8px_24px_rgba(2,6,14,0.08)]">
         <div className="flex items-end gap-2">
           <textarea
             ref={textareaRef}
@@ -41,47 +97,37 @@ export function CreateMessageComposer({
             defaultValue={defaultMessage ?? ""}
             required
             minLength={8}
-            rows={4}
-            placeholder="Describe the program you want to build - type, scope, timeline, requirements... e.g. 'Run a global employee hackathon for APAC and Europe, teams of 4, registration next Monday, six week sprint, two judging rounds, sponsor-safe report required.'"
-            className="min-h-[110px] flex-1 resize-none bg-transparent text-[13px] leading-6 text-[#eae5dc] outline-none placeholder:text-[#5e7088]"
+            rows={1}
+            placeholder="Describe the program you want to build - type, scope, timeline, requirements..."
+            className="min-h-[22px] max-h-[112px] flex-1 resize-none bg-transparent text-[14px] leading-7 text-[#eae5dc] outline-none placeholder:text-[#607089]"
           />
           <ComposerActions isSubmitting={isSubmitting} />
         </div>
-        {isSubmitting ? (
-          <div
-            aria-live="polite"
-            className="mt-3 flex items-center gap-2 rounded-lg border border-[#b08a2838] bg-[#b08a2810] px-3 py-2 text-[11.5px] text-[#e4d8b4]"
-          >
-            <SpinnerIcon />
-            Innova is drafting the next program state. This can take a few seconds.
-          </div>
-        ) : (
-          <div className="mt-3 text-[11px] text-[#5e7088]">
-            Send an instruction to Innova, then review the governed brief before moving into plan and approvals.
-          </div>
-        )}
+        <div className="mt-2 flex items-center justify-between gap-3 px-1 text-[10.5px] text-[#5e7088]">
+          <span>Innova structures your input into a governed brief, plan, and approval flow.</span>
+          <span className="shrink-0">{isSubmitting ? "Sending..." : "Enter to send"}</span>
+        </div>
       </div>
     </form>
   );
 }
 
 function ComposerActions({ isSubmitting }: { isSubmitting: boolean }) {
-  const { pending } = useFormStatus();
-  const busy = pending || isSubmitting;
+  const busy = isSubmitting;
 
   return (
     <div className="flex shrink-0 items-center gap-2">
       <button
         type="button"
         disabled={busy}
-        className="flex h-8 w-8 items-center justify-center rounded-md text-[#5e7088] transition hover:bg-white/[0.03] hover:text-[#9baabf] disabled:cursor-not-allowed disabled:opacity-40"
+        className="flex h-8 w-8 items-center justify-center rounded-lg text-[#5e7088] transition hover:bg-white/[0.03] hover:text-[#9baabf] disabled:cursor-not-allowed disabled:opacity-40"
       >
         <PaperclipIcon />
       </button>
       <button
         type="submit"
         disabled={busy}
-        className="flex min-w-[104px] items-center justify-center gap-2 rounded-md bg-[#b08a28] px-3 py-2 text-[11.5px] font-semibold text-[#06100f] transition hover:bg-[#ccaa4a] disabled:cursor-not-allowed disabled:opacity-70"
+        className="flex h-9 min-w-[92px] items-center justify-center gap-2 rounded-full bg-[#b08a28] px-3.5 text-[11.5px] font-semibold text-[#06100f] transition hover:bg-[#ccaa4a] disabled:cursor-not-allowed disabled:opacity-70"
       >
         {busy ? (
           <>
@@ -98,6 +144,34 @@ function ComposerActions({ isSubmitting }: { isSubmitting: boolean }) {
     </div>
   );
 }
+
+export type StreamEvent =
+  | {
+      type: "session";
+      sessionId: string;
+      workspaceId: string;
+    }
+  | {
+      type: "status";
+      title: string;
+      body: string;
+    }
+  | {
+      type: "delta";
+      text: string;
+    }
+  | {
+      type: "done";
+      status: string;
+      sessionId: string;
+      workspaceId: string;
+    }
+  | {
+      type: "error";
+      message: string;
+      sessionId?: string;
+      workspaceId?: string;
+    };
 
 function PaperclipIcon() {
   return (

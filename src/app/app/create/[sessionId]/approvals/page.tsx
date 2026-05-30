@@ -38,6 +38,14 @@ export default async function ApprovalsPage({ params, searchParams }: ApprovalsP
       userEmail={user.email}
       workspaces={data.workspaces}
       programs={programs}
+      headerActions={
+        <Link
+          href={`/app/create?session=${sessionId}`}
+          className="rounded-md border border-white/10 px-3 py-1.5 text-[11.5px] font-medium text-[#9baabf] transition hover:bg-white/[0.04] hover:text-[#eae5dc]"
+        >
+          Back to AI Workspace
+        </Link>
+      }
     >
       <div className="flex h-full flex-col bg-[#07101f]">
         <ApprovalTabs
@@ -83,7 +91,7 @@ function ApprovalTabs({
   planReady: boolean;
 }) {
   const tabs = [
-    { label: "Innova Chat", href: `/app/create?session=${sessionId}` },
+    { label: "Back to AI Workspace", href: `/app/create?session=${sessionId}` },
     { label: "Brief", href: `/app/create/${sessionId}/brief`, badge: "✓" },
     { label: "Plan", href: `/app/create/${sessionId}/plan`, badge: planReady ? "✓" : null },
     { label: "Assets", href: `/app/create/${sessionId}/assets` },

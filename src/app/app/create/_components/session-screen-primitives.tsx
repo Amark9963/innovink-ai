@@ -110,7 +110,7 @@ export function SessionTabs({
   const latestApproval = data.approvals[0] ?? null;
 
   const tabs = [
-    { label: "Innova Chat", href: `/app/create?session=${sessionId}`, key: "chat" as const },
+    { label: "Back to AI Workspace", href: `/app/create?session=${sessionId}`, key: "chat" as const },
     {
       label: "Brief",
       href: `/app/create/${sessionId}/brief`,
@@ -150,20 +150,21 @@ export function SessionTabs({
   ];
 
   return (
-    <div className="flex items-center gap-2 overflow-x-auto border-b border-white/7 bg-[#0c1525] px-5">
+    <div className="flex items-center gap-2 overflow-x-auto border-b border-white/7 bg-[#0c1525] px-5 py-2">
       {tabs.map((tab) => (
         <Link
           key={tab.key}
           href={tab.href}
           className={cn(
-            "flex h-11 items-center gap-2 border-b-2 border-transparent px-3 text-[12px] text-[#9baabf] transition hover:text-[#eae5dc]",
-            active === tab.key && "border-b-[#b08a28] font-semibold text-[#ccaa4a]",
+            "flex h-8 items-center gap-2 rounded-full border border-transparent px-3 text-[11.5px] text-[#8fa0b6] transition hover:bg-white/[0.04] hover:text-[#eae5dc]",
+            tab.key === "chat" && "mr-2 border-white/10 bg-white/[0.02] text-[#9baabf]",
+            active === tab.key && "border-[#b08a2838] bg-[#b08a2810] font-semibold text-[#ccaa4a]",
           )}
         >
           <span>{tab.label}</span>
           {tab.badge === "ok" ? (
-            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-[#2d7a58] px-1 text-[9px] font-bold text-white">
-              ✓
+            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-[#2d7a58] px-1 text-[8.5px] font-bold text-white">
+              OK
             </span>
           ) : null}
           {tab.badge === "warn" ? (
@@ -172,7 +173,7 @@ export function SessionTabs({
             </span>
           ) : null}
           {tab.count ? (
-            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-[#b08a28] px-1 text-[9px] font-bold text-[#07101f]">
+            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-[#b08a28] px-1 text-[8.5px] font-bold text-[#07101f]">
               {tab.count}
             </span>
           ) : null}
@@ -190,10 +191,7 @@ export function BriefSummaryCard({ brief }: { brief: ProgramBriefSummary }) {
     <div className="rounded-lg border border-white/7 bg-[#111e30] p-4">
       <InfoRow label="Objective" value={getStringValue(briefRecord.objective)} />
       <InfoRow label="Format" value={getStringValue(briefRecord.format)} />
-      <InfoRow
-        label="Regions"
-        value={getArrayStrings(briefRecord.regions).join(", ")}
-      />
+      <InfoRow label="Regions" value={getArrayStrings(briefRecord.regions).join(", ")} />
       <InfoRow
         label="Participants"
         value={getArrayStrings(briefRecord.targetParticipants).join(", ")}
@@ -204,10 +202,7 @@ export function BriefSummaryCard({ brief }: { brief: ProgramBriefSummary }) {
       <InfoRow label="Program window" value={getStringValue(timeline.liveProgramWindow)} />
       <InfoRow label="Evaluation" value={getStringValue(briefRecord.evaluationModel)} />
       <InfoRow label="Mentoring" value={getStringValue(briefRecord.mentoringModel)} />
-      <InfoRow
-        label="Deliverables"
-        value={getArrayStrings(briefRecord.deliverables).join(", ")}
-      />
+      <InfoRow label="Deliverables" value={getArrayStrings(briefRecord.deliverables).join(", ")} />
     </div>
   );
 }
@@ -255,10 +250,7 @@ export function PlanItemsList({ items }: { items: ProgramPlanItemSummary[] }) {
   return (
     <div className="space-y-3">
       {items.map((item, index) => (
-        <article
-          key={item.id}
-          className="rounded-xl border border-white/7 bg-[#111e30] p-4"
-        >
+        <article key={item.id} className="rounded-xl border border-white/7 bg-[#111e30] p-4">
           <div className="flex items-start gap-4">
             <div className="flex h-7 w-7 items-center justify-center rounded-full border border-[#b08a2838] bg-[#b08a2810] text-[11px] font-semibold text-[#ccaa4a]">
               {index + 1}
@@ -318,13 +310,12 @@ export function ExecutionStepList({ steps }: { steps: ExecutionRunStepSummary[] 
             <div
               className={cn(
                 "mt-0.5 flex h-8 w-8 items-center justify-center rounded-full border text-[11px] font-semibold",
-                step.status === "completed" &&
-                  "border-[#2d7a5840] bg-[#2d7a5812] text-[#9ad0b7]",
-                step.status === "partial" &&
-                  "border-[#c9973a40] bg-[#c9973a12] text-[#e8c26d]",
-                step.status === "failed" &&
-                  "border-[#9b3a3a44] bg-[#9b3a3a12] text-[#f1bcbc]",
-                (step.status === "queued" || step.status === "running" || step.status === "cancelled") &&
+                step.status === "completed" && "border-[#2d7a5840] bg-[#2d7a5812] text-[#9ad0b7]",
+                step.status === "partial" && "border-[#c9973a40] bg-[#c9973a12] text-[#e8c26d]",
+                step.status === "failed" && "border-[#9b3a3a44] bg-[#9b3a3a12] text-[#f1bcbc]",
+                (step.status === "queued" ||
+                  step.status === "running" ||
+                  step.status === "cancelled") &&
                   "border-white/10 bg-white/[0.03] text-[#9baabf]",
               )}
             >
@@ -334,9 +325,7 @@ export function ExecutionStepList({ steps }: { steps: ExecutionRunStepSummary[] 
               <div className="flex flex-wrap items-center gap-2">
                 <div className="text-[13px] font-semibold text-[#eae5dc]">{step.title}</div>
                 <StatusBadge tone={executionStatusTone(step.status)}>{step.status}</StatusBadge>
-                {step.targetType ? (
-                  <StatusBadge tone="muted">{step.targetType}</StatusBadge>
-                ) : null}
+                {step.targetType ? <StatusBadge tone="muted">{step.targetType}</StatusBadge> : null}
               </div>
               <div className="mt-2 text-[11px] uppercase tracking-[0.06em] text-[#5e7088]">
                 {formatLabel(step.stepType)}
