@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prepareApprovalRequestAction } from "@/app/app/create/actions";
 import { buildWorkspaceHref } from "@/app/app/create/_components/session-screen-primitives";
+import { LandingPageDraftPreview } from "@/app/app/create/_components/landing-page-draft-preview";
 import type { Json } from "@/lib/supabase/database.types";
 import type {
   AgentCreateWorkspaceData,
@@ -832,47 +833,7 @@ export function AssetDraftPreview({ asset }: { asset: DerivedAsset }) {
   const record = payload as Record<string, unknown>;
 
   if (Array.isArray(record.sections)) {
-    const sections = record.sections.filter(
-      (section): section is Record<string, unknown> =>
-        typeof section === "object" && section !== null && !Array.isArray(section),
-    );
-
-    return (
-      <div className="space-y-3">
-        {sections.map((section, index) => (
-          <div
-            key={`${String(section.sectionKey ?? index)}-${index}`}
-            className="rounded-2xl border border-white/10 bg-[#111e30] p-5"
-          >
-            <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#5e7088]">
-              {typeof section.sectionKey === "string"
-                ? section.sectionKey.replaceAll("_", " ")
-                : `Section ${index + 1}`}
-            </div>
-            {typeof section.headline === "string" ? (
-              <div className="mt-3 text-[16px] font-semibold text-[#eae5dc]">
-                {section.headline}
-              </div>
-            ) : null}
-            {typeof section.subheadline === "string" ? (
-              <div className="mt-2 text-[12px] leading-7 text-[#c8d3de]">
-                {section.subheadline}
-              </div>
-            ) : null}
-            {typeof section.body === "string" ? (
-              <div className="mt-3 text-[12px] leading-7 text-[#9baabf]">
-                {section.body}
-              </div>
-            ) : null}
-            {typeof section.ctaLabel === "string" ? (
-              <div className="mt-4 inline-flex rounded-md border border-[#b08a2838] bg-[#b08a2810] px-3 py-2 text-[11px] font-medium text-[#e4d8b4]">
-                CTA: {section.ctaLabel}
-              </div>
-            ) : null}
-          </div>
-        ))}
-      </div>
-    );
+    return <LandingPageDraftPreview payload={record} />;
   }
 
   if (Array.isArray(record.fields)) {

@@ -15,6 +15,21 @@ type LandingPageAssetDraft = {
   seoTitle: string;
   seoDescription: string;
   themeKey: string;
+  theme?: {
+    pageBackground?: string;
+    surfaceBackground?: string;
+    heroBackground?: string;
+    heroForeground?: string;
+    headingColor?: string;
+    bodyColor?: string;
+    mutedTextColor?: string;
+    accentColor?: string;
+    borderColor?: string;
+    ctaTextColor?: string;
+    secondaryButtonBackground?: string;
+    secondaryButtonTextColor?: string;
+    secondaryButtonBorderColor?: string;
+  };
   sections: LandingPageAssetSection[];
 };
 
@@ -182,6 +197,7 @@ function buildRefinementPrompt(input: {
     "Apply the user's instruction to the current draft while preserving the underlying program intent.",
     "Keep the tone premium, corporate, and operationally clear.",
     "The PM may ask for branding colors, hierarchy changes, stronger executive tone, section additions, or CTA refinements. Honor those requests while staying enterprise-grade.",
+    "Use the draft.theme object to express visual changes like hero background, accent color, text contrast, and surface colors when the PM asks for branding or page styling updates.",
     "Do not invent prize amounts, legal claims, or exact dates if they are not present in the input context.",
     "Preserve the same overall structured landing-page object shape even when reorganizing copy.",
     "Return JSON only. The top-level object must contain assistantMessage and draft.",
@@ -249,6 +265,25 @@ const landingPageAssetDraftSchema = {
     seoTitle: { type: "string" },
     seoDescription: { type: "string" },
     themeKey: { type: "string" },
+    theme: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        pageBackground: { type: "string" },
+        surfaceBackground: { type: "string" },
+        heroBackground: { type: "string" },
+        heroForeground: { type: "string" },
+        headingColor: { type: "string" },
+        bodyColor: { type: "string" },
+        mutedTextColor: { type: "string" },
+        accentColor: { type: "string" },
+        borderColor: { type: "string" },
+        ctaTextColor: { type: "string" },
+        secondaryButtonBackground: { type: "string" },
+        secondaryButtonTextColor: { type: "string" },
+        secondaryButtonBorderColor: { type: "string" },
+      },
+    },
     sections: {
       type: "array",
       minItems: 4,

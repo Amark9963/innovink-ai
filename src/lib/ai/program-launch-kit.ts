@@ -70,6 +70,21 @@ function buildLandingPageDraft(
       seoTitle: titleBase,
       seoDescription: objective,
       themeKey: "enterprise-navy",
+      theme: {
+        pageBackground: "#f3f1ea",
+        surfaceBackground: "#ffffff",
+        heroBackground: "linear-gradient(135deg, #07101f 0%, #0c1525 50%, #111e30 100%)",
+        heroForeground: "#f4ede2",
+        headingColor: "#101a2a",
+        bodyColor: "#38485d",
+        mutedTextColor: "#70839d",
+        accentColor: "#b08a28",
+        borderColor: "rgba(16, 26, 42, 0.1)",
+        ctaTextColor: "#07101f",
+        secondaryButtonBackground: "rgba(255,255,255,0.04)",
+        secondaryButtonTextColor: "#d4bf86",
+        secondaryButtonBorderColor: "rgba(212, 191, 134, 0.45)",
+      },
       sections: [
         {
           sectionKey: "hero",

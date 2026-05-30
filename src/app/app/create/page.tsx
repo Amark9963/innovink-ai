@@ -11,8 +11,8 @@ import {
   type DerivedAsset,
 } from "@/app/app/create/_components/assets-review-workspace";
 import { CreateWorkspaceLive } from "@/app/app/create/_components/create-workspace-live";
-import { LandingPageChatEditor } from "@/app/app/create/_components/landing-page-chat-editor";
 import { buildWorkspaceHref } from "@/app/app/create/_components/session-screen-primitives";
+import { WorkspaceAssetCanvas } from "@/app/app/create/_components/workspace-asset-canvas";
 import { OperatorShell } from "@/components/enterprise/operator-shell";
 import {
   getAgentCreateWorkspaceData,
@@ -186,9 +186,8 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
     activeArtifact === "assets" && params.asset
       ? assets.find((asset) => asset.itemKey === params.asset) ?? null
       : null;
-  const workspaceLandingAsset =
-    selectedWorkspaceAsset?.editorSurface === "landing-page" ? selectedWorkspaceAsset : null;
-  const landingPageEditorMessages: WorkspaceLandingPageEditorMessage[] = workspaceLandingAsset
+  const landingPageEditorMessages: WorkspaceLandingPageEditorMessage[] =
+    selectedWorkspaceAsset?.editorSurface === "landing-page"
     ? data.messages
         .filter((message): message is typeof message & {
           role: "user" | "assistant";
@@ -212,7 +211,7 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
           const payload = message.contentPayload as Record<string, unknown>;
           return (
             payload.assetType === "landing_page" &&
-            payload.assetKey === workspaceLandingAsset.itemKey
+            payload.assetKey === selectedWorkspaceAsset.itemKey
           );
         })
         .map((message) => ({
@@ -368,13 +367,13 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
                     <SidebarPill label={`${data.planItems.length} launch items`} muted />
                     <SidebarPill
                       label={
-                        workspaceLandingAsset
+                        selectedWorkspaceAsset
                           ? "Canvas active"
                           : hasApprovalHistory
                             ? "Packet prepared"
                             : "Ready for PM review"
                       }
-                      tone={workspaceLandingAsset ? "blue" : hasApprovalHistory ? "green" : "blue"}
+                      tone={selectedWorkspaceAsset ? "blue" : hasApprovalHistory ? "green" : "blue"}
                     />
                   </div>
                   <div className="mt-3">
@@ -512,13 +511,13 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
               ) : activeArtifact === "assets" && activeSessionId ? (
                 <Link
                   href={
-                    workspaceLandingAsset
-                      ? `/app/create/${activeSessionId}/assets/${workspaceLandingAsset.itemKey}`
+                    selectedWorkspaceAsset
+                      ? `/app/create/${activeSessionId}/assets/${selectedWorkspaceAsset.itemKey}`
                       : `/app/create/${activeSessionId}/assets`
                   }
                   className="block w-full rounded-md bg-[#162034] px-4 py-3 text-center text-[12px] font-semibold text-[#eae5dc] transition hover:bg-[#1b2840]"
                 >
-                  {workspaceLandingAsset ? "Open full asset review" : "Review asset drafts"}
+                  {selectedWorkspaceAsset ? "Open full asset review" : "Review asset drafts"}
                 </Link>
               ) : data.plan && activeSessionId ? (
                 <Link
@@ -542,7 +541,7 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
               !hasPendingApproval ? (
                 <div className="text-center text-[10px] leading-5 text-[#5e7088]">
                   {activeArtifact === "assets"
-                    ? workspaceLandingAsset
+                    ? selectedWorkspaceAsset
                       ? "You are refining this asset inside the AI Workspace canvas"
                       : "Select an asset to open it inside the AI Workspace canvas"
                     : briefOpenQuestionCount > 0
@@ -565,17 +564,20 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
         </>
       }
     >
-      {workspaceLandingAsset && activeSessionId ? (
-        <div className="h-full overflow-y-auto bg-[#07101f] px-4 py-4 md:px-5">
-          <LandingPageChatEditor
-            key={`workspace-landing-asset-${workspaceLandingAsset.id}-${landingPageEditorMessages.length}`}
-            sessionId={activeSessionId}
-            assetKey={workspaceLandingAsset.itemKey}
-            asset={workspaceLandingAsset}
-            initialMessages={landingPageEditorMessages}
-            embeddedInWorkspace
-          />
-        </div>
+      {selectedWorkspaceAsset && activeSessionId ? (
+        <WorkspaceAssetCanvas
+          key={`workspace-asset-canvas-${selectedWorkspaceAsset.id}-${landingPageEditorMessages.length}`}
+          sessionId={activeSessionId}
+          asset={selectedWorkspaceAsset}
+          linkedProgramId={data.brief?.programId ?? null}
+          approvalReady={hasApprovalHistory}
+          executionStatus={
+            data.executionRuns.length > 0
+              ? data.executionRuns[0]?.status ?? "No run"
+              : "No deterministic run yet"
+          }
+          landingPageEditorMessages={landingPageEditorMessages}
+        />
       ) : (
         <CreateWorkspaceLive
           key={`workspace-live-${activeSessionId ?? "new"}-${data.messages.length}-${data.runs.length}-${data.events.length}-${params.status ?? "idle"}-${params.error ?? "ok"}`}
