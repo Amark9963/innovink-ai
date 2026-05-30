@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { OperatorShell } from "@/components/enterprise/operator-shell";
 import { ApprovalsReviewWorkspace } from "@/app/app/create/_components/approvals-review-workspace";
+import {
+  SessionTabs,
+  buildWorkspaceHref,
+} from "@/app/app/create/_components/session-screen-primitives";
 import { loadSessionScreenData } from "@/app/app/create/_lib/load-session-screen-data";
 import { getApprovalRequestItems } from "@/lib/supabase/queries";
 
@@ -25,8 +29,6 @@ export default async function ApprovalsPage({ params, searchParams }: ApprovalsP
   const approvalItems = selectedApproval
     ? await getApprovalRequestItems(supabase, selectedApproval.id)
     : [];
-  const pendingCount = data.approvals.filter((item) => item.status === "pending").length;
-
   return (
     <OperatorShell
       activeNav="approvals"
@@ -40,20 +42,16 @@ export default async function ApprovalsPage({ params, searchParams }: ApprovalsP
       programs={programs}
       headerActions={
         <Link
-          href={`/app/create?session=${sessionId}`}
+          href={buildWorkspaceHref(sessionId, "approvals")}
           className="rounded-md border border-white/10 px-3 py-1.5 text-[11.5px] font-medium text-[#9baabf] transition hover:bg-white/[0.04] hover:text-[#eae5dc]"
         >
           Back to AI Workspace
         </Link>
       }
+      workspacePrimaryMode
     >
       <div className="flex h-full flex-col bg-[#07101f]">
-        <ApprovalTabs
-          sessionId={sessionId}
-          pendingCount={pendingCount}
-          executionCount={data.executionRuns.length}
-          planReady={Boolean(data.plan)}
-        />
+        <SessionTabs sessionId={sessionId} active="approvals" data={data} />
 
         {data.approvals.length > 0 ? (
           <ApprovalsReviewWorkspace
@@ -79,6 +77,7 @@ export default async function ApprovalsPage({ params, searchParams }: ApprovalsP
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function ApprovalTabs({
   sessionId,
   pendingCount,

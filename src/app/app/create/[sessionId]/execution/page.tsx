@@ -3,6 +3,10 @@ import { OperatorShell } from "@/components/enterprise/operator-shell";
 import { loadSessionScreenData } from "@/app/app/create/_lib/load-session-screen-data";
 import { ExecutionExportButton } from "@/app/app/create/_components/execution-export-button";
 import { ExecutionReviewWorkspace } from "@/app/app/create/_components/execution-review-workspace";
+import {
+  SessionTabs,
+  buildWorkspaceHref,
+} from "@/app/app/create/_components/session-screen-primitives";
 
 type ExecutionPageProps = {
   params: Promise<{
@@ -29,7 +33,7 @@ export default async function ExecutionPage({ params }: ExecutionPageProps) {
       headerActions={
         <>
           <Link
-            href={`/app/create?session=${sessionId}`}
+            href={buildWorkspaceHref(sessionId, "execution")}
             className="rounded-md border border-white/10 px-3 py-1.5 text-[11.5px] font-medium text-[#9baabf] transition hover:bg-white/[0.04] hover:text-[#eae5dc]"
           >
             Back to AI Workspace
@@ -37,9 +41,13 @@ export default async function ExecutionPage({ params }: ExecutionPageProps) {
           <ExecutionExportButton />
         </>
       }
+      workspacePrimaryMode
       mainClassName="overflow-hidden"
     >
-      <ExecutionReviewWorkspace sessionId={sessionId} data={data} programs={programs} />
+      <div className="flex h-full flex-col bg-[#07101f]">
+        <SessionTabs sessionId={sessionId} active="execution" data={data} />
+        <ExecutionReviewWorkspace sessionId={sessionId} data={data} programs={programs} />
+      </div>
     </OperatorShell>
   );
 }

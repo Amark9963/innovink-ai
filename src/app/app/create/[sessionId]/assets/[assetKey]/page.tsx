@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { refineLandingPageAssetDraftAction } from "@/app/app/create/actions";
 import { OperatorShell } from "@/components/enterprise/operator-shell";
 import {
   AssetDraftPreview,
@@ -12,7 +11,11 @@ import {
   type AssetDetailTab,
   HistoryBlock,
 } from "@/app/app/create/_components/assets-review-workspace";
-import { SessionTabs } from "@/app/app/create/_components/session-screen-primitives";
+import { LandingPageChatEditor } from "@/app/app/create/_components/landing-page-chat-editor";
+import {
+  SessionTabs,
+  buildWorkspaceHref,
+} from "@/app/app/create/_components/session-screen-primitives";
 import { loadSessionScreenData } from "@/app/app/create/_lib/load-session-screen-data";
 import { getApprovalRequestItems } from "@/lib/supabase/queries";
 
@@ -50,6 +53,41 @@ export default async function AssetDetailPage({
     data.artifacts,
   );
   const selectedAsset = assets.find((asset) => asset.itemKey === assetKey) ?? null;
+  const landingPageEditorMessages =
+    selectedAsset?.editorSurface === "landing-page"
+      ? data.messages
+          .filter((message): message is typeof message & {
+            role: "user" | "assistant";
+            contentText: string;
+          } => {
+            if (
+              (message.role !== "user" && message.role !== "assistant") ||
+              !message.contentText
+            ) {
+              return false;
+            }
+
+            if (
+              !message.contentPayload ||
+              typeof message.contentPayload !== "object" ||
+              Array.isArray(message.contentPayload)
+            ) {
+              return false;
+            }
+
+            const payload = message.contentPayload as Record<string, unknown>;
+            return (
+              payload.assetType === "landing_page" &&
+              payload.assetKey === assetKey
+            );
+          })
+          .map((message) => ({
+            id: message.id,
+            role: message.role,
+            contentText: message.contentText,
+            createdAt: message.createdAt,
+          }))
+      : [];
   const linkedProgramId = data.brief?.programId ?? null;
   const approvalReady = data.approvals.length > 0;
 
@@ -66,18 +104,13 @@ export default async function AssetDetailPage({
       programs={programs}
       headerActions={
         <Link
-          href={buildAssetRoute(sessionId, {
-            asset: assetKey,
-            category: "all",
-            status: "all",
-            view: "grid",
-            tab: "preview",
-          })}
+          href={buildWorkspaceHref(sessionId, "assets", { asset: assetKey })}
           className="rounded-md border border-white/10 px-3 py-1.5 text-[11.5px] font-medium text-[#9baabf] transition hover:bg-white/[0.04] hover:text-[#eae5dc]"
         >
-          Back to Draft Assets
+          Back to AI Workspace
         </Link>
       }
+      workspacePrimaryMode
       mainClassName="overflow-hidden"
     >
       <div className="flex h-full flex-col bg-[#07101f]">
@@ -134,7 +167,7 @@ export default async function AssetDetailPage({
                       })}
                       className="rounded-md bg-[#b08a28] px-4 py-2 text-[12px] font-semibold text-[#07101f] transition hover:bg-[#ccaa4a]"
                     >
-                      Return to approvals flow
+                      Return to asset review
                     </Link>
                   )}
                 </div>
@@ -202,86 +235,13 @@ export default async function AssetDetailPage({
                   </div>
 
                   {selectedAsset.editorSurface === "landing-page" ? (
-                    <div className="space-y-4">
-                      <form
-                        action={refineLandingPageAssetDraftAction}
-                        className="rounded-2xl border border-white/10 bg-[#111e30] p-5"
-                      >
-                        <input type="hidden" name="sessionId" value={sessionId} />
-                        <input type="hidden" name="assetKey" value={assetKey} />
-                        <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5e7088]">
-                          Conversational landing-page editor
-                        </div>
-                        <textarea
-                          name="instruction"
-                          rows={6}
-                          placeholder="Tell Innova how to change the page. Example: Make the hero more premium, shorten the overview, add an FAQ section, and change the CTA to Join the hackathon."
-                          className="w-full rounded-xl border border-white/10 bg-[#162034] px-4 py-3 text-[12px] leading-6 text-[#eae5dc] outline-none transition placeholder:text-[#5e7088] focus:border-[#b08a2866]"
-                        />
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {[
-                            "Make the hero more premium and executive-facing.",
-                            "Shorten the overview and add a clearer FAQ section.",
-                            "Rewrite the CTA for employee-only participation.",
-                          ].map((prompt) => (
-                            <div
-                              key={prompt}
-                              className="rounded-full border border-white/10 px-3 py-1.5 text-[11px] text-[#9baabf]"
-                            >
-                              {prompt}
-                            </div>
-                          ))}
-                        </div>
-                        <div className="mt-4 flex items-center justify-between gap-3">
-                          <div className="text-[11px] leading-6 text-[#9baabf]">
-                            Innova will generate a new draft revision and keep this asset in governed review.
-                          </div>
-                          <button
-                            type="submit"
-                            className="rounded-md bg-[#b08a28] px-4 py-2 text-[12px] font-semibold text-[#07101f] transition hover:bg-[#ccaa4a]"
-                          >
-                            Ask Innova
-                          </button>
-                        </div>
-                      </form>
-
-                      <div className="grid gap-3 md:grid-cols-2">
-                        <Link
-                          href={buildCreateHref(sessionId, selectedAsset.editPrompt)}
-                          className="rounded-xl border border-white/10 bg-[#111e30] px-4 py-4 text-left transition hover:border-white/20 hover:bg-white/[0.03]"
-                        >
-                          <div className="text-[12px] font-semibold text-[#eae5dc]">
-                            Open in PM workspace chat
-                          </div>
-                          <div className="mt-2 text-[11px] leading-6 text-[#9baabf]">
-                            Use the broader PM workspace if you want Innova to consider the full brief, plan, and adjacent assets together.
-                          </div>
-                        </Link>
-
-                        {buildLiveEditorLink(selectedAsset, linkedProgramId) ? (
-                          <Link
-                            href={buildLiveEditorLink(selectedAsset, linkedProgramId)!}
-                            className="rounded-xl border border-white/10 bg-[#111e30] px-4 py-4 text-left transition hover:border-white/20 hover:bg-white/[0.03]"
-                          >
-                            <div className="text-[12px] font-semibold text-[#eae5dc]">
-                              {buildLiveEditorLabel(selectedAsset)}
-                            </div>
-                            <div className="mt-2 text-[11px] leading-6 text-[#9baabf]">
-                              Open the live program editor after the deterministic program surface exists.
-                            </div>
-                          </Link>
-                        ) : (
-                          <div className="rounded-xl border border-dashed border-white/10 bg-[#111e30] px-4 py-4">
-                            <div className="text-[12px] font-semibold text-[#eae5dc]">
-                              Live editor not available yet
-                            </div>
-                            <div className="mt-2 text-[11px] leading-6 text-[#9baabf]">
-                              This draft is still operating inside the PM workspace. A native editor will unlock once deterministic execution creates the live program surface.
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                    <LandingPageChatEditor
+                      key={`${selectedAsset.id}-${landingPageEditorMessages.length}`}
+                      sessionId={sessionId}
+                      assetKey={assetKey}
+                      asset={selectedAsset}
+                      initialMessages={landingPageEditorMessages}
+                    />
                   ) : (
                     <div className="grid gap-3 md:grid-cols-2">
                       <Link

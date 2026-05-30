@@ -5,10 +5,18 @@ import {
   generateProgramPlanAction,
   prepareApprovalRequestAction,
 } from "@/app/app/create/actions";
+import {
+  AssetStatusBadge,
+  deriveAssets,
+  type DerivedAsset,
+} from "@/app/app/create/_components/assets-review-workspace";
 import { CreateWorkspaceLive } from "@/app/app/create/_components/create-workspace-live";
+import { LandingPageChatEditor } from "@/app/app/create/_components/landing-page-chat-editor";
+import { buildWorkspaceHref } from "@/app/app/create/_components/session-screen-primitives";
 import { OperatorShell } from "@/components/enterprise/operator-shell";
 import {
   getAgentCreateWorkspaceData,
+  getApprovalRequestItems,
   getCurrentUserOrNull,
   getInitialOnboardingState,
   getProgramAccessRows,
@@ -22,7 +30,16 @@ type CreatePageProps = {
     status?: string;
     error?: string;
     prompt?: string;
+    panel?: string;
+    asset?: string;
   }>;
+};
+
+type WorkspaceLandingPageEditorMessage = {
+  id: string;
+  role: "user" | "assistant";
+  contentText: string;
+  createdAt: string;
 };
 
 const statusCopy: Record<string, string> = {
@@ -124,6 +141,9 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
   const activeSession = data.activeSession;
   const activeSessionId = activeSession?.id ?? null;
   const latestApproval = data.approvals[0] ?? null;
+  const approvalItems = latestApproval
+    ? await getApprovalRequestItems(supabase, latestApproval.id)
+    : [];
   const hasPendingApproval = data.approvals.some((approval) => approval.status === "pending");
   const hasApprovalHistory = data.approvals.length > 0;
   const canGeneratePlan =
@@ -150,29 +170,76 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
     hasPendingApproval,
     isApproved: latestApproval?.status === "approved",
   });
-  const activeArtifact =
-    canExecuteApprovedPlan || hasApprovalHistory
-      ? "approvals"
-      : data.plan
-        ? "plan"
-        : "brief";
+  const activeArtifact = resolveActiveArtifact({
+    requestedPanel: params.panel,
+    hasBrief: Boolean(data.brief),
+    hasPlan: Boolean(data.plan),
+    hasApprovals: hasApprovalHistory || canExecuteApprovedPlan,
+  });
+  const assets = deriveAssets(
+    data.planItems,
+    approvalItems,
+    data.latestExecutionSteps,
+    data.artifacts,
+  );
+  const selectedWorkspaceAsset =
+    activeArtifact === "assets" && params.asset
+      ? assets.find((asset) => asset.itemKey === params.asset) ?? null
+      : null;
+  const workspaceLandingAsset =
+    selectedWorkspaceAsset?.editorSurface === "landing-page" ? selectedWorkspaceAsset : null;
+  const landingPageEditorMessages: WorkspaceLandingPageEditorMessage[] = workspaceLandingAsset
+    ? data.messages
+        .filter((message): message is typeof message & {
+          role: "user" | "assistant";
+          contentText: string;
+        } => {
+          if (
+            (message.role !== "user" && message.role !== "assistant") ||
+            !message.contentText
+          ) {
+            return false;
+          }
+
+          if (
+            !message.contentPayload ||
+            typeof message.contentPayload !== "object" ||
+            Array.isArray(message.contentPayload)
+          ) {
+            return false;
+          }
+
+          const payload = message.contentPayload as Record<string, unknown>;
+          return (
+            payload.assetType === "landing_page" &&
+            payload.assetKey === workspaceLandingAsset.itemKey
+          );
+        })
+        .map((message) => ({
+          id: message.id,
+          role: message.role === "assistant" ? ("assistant" as const) : ("user" as const),
+          contentText: message.contentText ?? "",
+          createdAt: message.createdAt,
+        }))
+    : [];
   const approvalSensitiveItemCount = data.planItems.filter((item) => item.requiresApproval).length;
   const currentPrimaryHref = activeSessionId
-    ? canExecuteApprovedPlan
-      ? `/app/create/${activeSessionId}/execution`
-      : hasApprovalHistory
-        ? `/app/create/${activeSessionId}/approvals`
-        : canPrepareApprovals || data.plan
+    ? activeArtifact === "approvals"
+      ? `/app/create/${activeSessionId}/approvals`
+      : activeArtifact === "assets"
+        ? `/app/create/${activeSessionId}/assets`
+        : activeArtifact === "plan"
           ? `/app/create/${activeSessionId}/plan`
           : `/app/create/${activeSessionId}/brief`
     : null;
-  const currentPrimaryLabel = canExecuteApprovedPlan
-    ? "Open execution ->"
-    : hasApprovalHistory
+  const currentPrimaryLabel =
+    activeArtifact === "approvals"
       ? "Review approvals ->"
-      : canPrepareApprovals || data.plan
-        ? "Open plan workspace ->"
-        : "Open full brief ->";
+      : activeArtifact === "assets"
+        ? "Open asset review ->"
+        : activeArtifact === "plan"
+          ? "Open plan workspace ->"
+          : "Open full brief ->";
 
   return (
     <OperatorShell
@@ -195,16 +262,24 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
           <div className="border-b border-white/7 bg-[#0c1525] px-3 py-2.5">
             <div className="flex flex-wrap gap-1">
               {["Brief", "Plan", "Assets", "Approvals"].map((tab) => (
-                <div
+                <Link
                   key={tab}
-                  className={`rounded-md px-3 py-1.5 text-[11px] ${
+                  href={
+                    activeSessionId
+                      ? buildWorkspaceHref(
+                          activeSessionId,
+                          tab.toLowerCase() as "brief" | "plan" | "assets" | "approvals",
+                        )
+                      : "#"
+                  }
+                  className={`rounded-md px-3 py-1.5 text-[11px] transition ${
                     activeArtifact === tab.toLowerCase()
                       ? "bg-[#162034] font-medium text-[#eae5dc]"
-                      : "text-[#7f90a6]"
+                      : "text-[#7f90a6] hover:bg-white/[0.03] hover:text-[#c8d3de]"
                   }`}
                 >
                   {tab}
-                </div>
+                </Link>
               ))}
             </div>
           </div>
@@ -278,6 +353,78 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
                     />
                   </div>
                 </section>
+              </div>
+            ) : activeArtifact === "assets" && activeSessionId ? (
+              <div className="space-y-3">
+                <section className="rounded-2xl border border-white/7 bg-[#162034] px-3 py-3">
+                  <div className="mb-2 text-[9px] font-semibold uppercase tracking-[0.13em] text-[#b08a28]">
+                    Launch-kit drafts
+                  </div>
+                  <div className="truncate text-[14px] font-semibold tracking-[-0.015em] text-[#eae5dc]">
+                    {selectedWorkspaceAsset?.title ?? "Asset review workspace"}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <SidebarPill label={`${data.artifacts.length} generated drafts`} />
+                    <SidebarPill label={`${data.planItems.length} launch items`} muted />
+                    <SidebarPill
+                      label={
+                        workspaceLandingAsset
+                          ? "Canvas active"
+                          : hasApprovalHistory
+                            ? "Packet prepared"
+                            : "Ready for PM review"
+                      }
+                      tone={workspaceLandingAsset ? "blue" : hasApprovalHistory ? "green" : "blue"}
+                    />
+                  </div>
+                  <div className="mt-3">
+                    {selectedWorkspaceAsset ? (
+                      <AssetWorkspaceSummary asset={selectedWorkspaceAsset} />
+                    ) : (
+                      <AssetsSummary
+                        assetCount={data.artifacts.length}
+                        generatedCount={data.artifacts.length}
+                        planItemsCount={data.planItems.length}
+                      />
+                    )}
+                  </div>
+                </section>
+                {assets.length > 0 ? (
+                  <section className="rounded-2xl border border-white/7 bg-[#162034] px-3 py-3">
+                    <div className="mb-3 text-[9px] font-semibold uppercase tracking-[0.13em] text-[#5e7088]">
+                      Select asset
+                    </div>
+                    <div className="space-y-2">
+                      {assets.slice(0, 5).map((asset) => (
+                        <Link
+                          key={asset.id}
+                          href={buildWorkspaceHref(activeSessionId, "assets", {
+                            asset: asset.itemKey,
+                          })}
+                          className={`block rounded-xl border px-3 py-3 transition ${
+                            selectedWorkspaceAsset?.itemKey === asset.itemKey
+                              ? "border-[#b08a2838] bg-[#b08a2810]"
+                              : "border-white/8 bg-[#111e30] hover:border-white/16 hover:bg-white/[0.03]"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="truncate text-[12px] font-medium text-[#eae5dc]">
+                                {asset.title}
+                              </div>
+                              <div className="mt-1 text-[10.5px] text-[#7f90a6]">
+                                {asset.meta}
+                              </div>
+                            </div>
+                            <AssetStatusBadge tone={asset.statusTone}>
+                              {asset.statusLabel}
+                            </AssetStatusBadge>
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
               </div>
             ) : data.brief ? (
               <div className="space-y-3">
@@ -362,6 +509,17 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
                     Execute approved foundation
                   </button>
                 </form>
+              ) : activeArtifact === "assets" && activeSessionId ? (
+                <Link
+                  href={
+                    workspaceLandingAsset
+                      ? `/app/create/${activeSessionId}/assets/${workspaceLandingAsset.itemKey}`
+                      : `/app/create/${activeSessionId}/assets`
+                  }
+                  className="block w-full rounded-md bg-[#162034] px-4 py-3 text-center text-[12px] font-semibold text-[#eae5dc] transition hover:bg-[#1b2840]"
+                >
+                  {workspaceLandingAsset ? "Open full asset review" : "Review asset drafts"}
+                </Link>
               ) : data.plan && activeSessionId ? (
                 <Link
                   href={`/app/create/${activeSessionId}/plan`}
@@ -383,7 +541,11 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
               !canExecuteApprovedPlan &&
               !hasPendingApproval ? (
                 <div className="text-center text-[10px] leading-5 text-[#5e7088]">
-                  {briefOpenQuestionCount > 0
+                  {activeArtifact === "assets"
+                    ? workspaceLandingAsset
+                      ? "You are refining this asset inside the AI Workspace canvas"
+                      : "Select an asset to open it inside the AI Workspace canvas"
+                    : briefOpenQuestionCount > 0
                     ? `Requires ${briefOpenQuestionCount} brief inputs to unlock`
                     : data.plan
                       ? "Plan is ready for governed review"
@@ -403,40 +565,53 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
         </>
       }
     >
-      <CreateWorkspaceLive
-        key={`workspace-live-${activeSessionId ?? "new"}-${data.messages.length}-${data.runs.length}-${data.events.length}-${params.status ?? "idle"}-${params.error ?? "ok"}`}
-        workspaceId={selectedWorkspace.workspaceId}
-        sessionId={activeSessionId}
-        initialSessions={data.sessions}
-        initialMessages={data.messages}
-        initialRuns={data.runs}
-        initialEvents={data.events}
-        initialPrompt={params.prompt ?? ""}
-        initialStatus={params.status ?? null}
-        initialError={params.error ?? null}
-        statusCopy={statusCopy}
-        templates={templates}
-        stageLabel={stage.label}
-        stageTone={stage.tone}
-        userInitial={userInitial}
-        canGeneratePlan={canGeneratePlan}
-        canPrepareApprovals={canPrepareApprovals}
-        canExecuteApprovedPlan={canExecuteApprovedPlan}
-        hasApprovalRequest={hasApprovalHistory}
-        hasPendingApproval={hasPendingApproval}
-        latestApprovalId={latestApproval?.id ?? null}
-        inlineBriefCard={
-          data.brief
-            ? {
-                openQuestionCount: briefOpenQuestionCount,
-                programType: data.brief.detectedProgramType,
-                format: getStringValue((data.brief.currentBrief as Record<string, unknown> | null)?.format),
-                regions: getArrayPreview((data.brief.currentBrief as Record<string, unknown> | null)?.regions),
-                teamPolicy: getStringValue((data.brief.currentBrief as Record<string, unknown> | null)?.teamPolicy),
-              }
-            : null
-        }
-      />
+      {workspaceLandingAsset && activeSessionId ? (
+        <div className="h-full overflow-y-auto bg-[#07101f] px-4 py-4 md:px-5">
+          <LandingPageChatEditor
+            key={`workspace-landing-asset-${workspaceLandingAsset.id}-${landingPageEditorMessages.length}`}
+            sessionId={activeSessionId}
+            assetKey={workspaceLandingAsset.itemKey}
+            asset={workspaceLandingAsset}
+            initialMessages={landingPageEditorMessages}
+            embeddedInWorkspace
+          />
+        </div>
+      ) : (
+        <CreateWorkspaceLive
+          key={`workspace-live-${activeSessionId ?? "new"}-${data.messages.length}-${data.runs.length}-${data.events.length}-${params.status ?? "idle"}-${params.error ?? "ok"}`}
+          workspaceId={selectedWorkspace.workspaceId}
+          sessionId={activeSessionId}
+          initialSessions={data.sessions}
+          initialMessages={data.messages}
+          initialRuns={data.runs}
+          initialEvents={data.events}
+          initialPrompt={params.prompt ?? ""}
+          initialStatus={params.status ?? null}
+          initialError={params.error ?? null}
+          statusCopy={statusCopy}
+          templates={templates}
+          stageLabel={stage.label}
+          stageTone={stage.tone}
+          userInitial={userInitial}
+          canGeneratePlan={canGeneratePlan}
+          canPrepareApprovals={canPrepareApprovals}
+          canExecuteApprovedPlan={canExecuteApprovedPlan}
+          hasApprovalRequest={hasApprovalHistory}
+          hasPendingApproval={hasPendingApproval}
+          latestApprovalId={latestApproval?.id ?? null}
+          inlineBriefCard={
+            data.brief
+              ? {
+                  openQuestionCount: briefOpenQuestionCount,
+                  programType: data.brief.detectedProgramType,
+                  format: getStringValue((data.brief.currentBrief as Record<string, unknown> | null)?.format),
+                  regions: getArrayPreview((data.brief.currentBrief as Record<string, unknown> | null)?.regions),
+                  teamPolicy: getStringValue((data.brief.currentBrief as Record<string, unknown> | null)?.teamPolicy),
+                }
+              : null
+          }
+        />
+      )}
     </OperatorShell>
   );
 }
@@ -549,6 +724,48 @@ function PlanSummary({
   );
 }
 
+function AssetsSummary({
+  assetCount,
+  generatedCount,
+  planItemsCount,
+}: {
+  assetCount: number;
+  generatedCount: number;
+  planItemsCount: number;
+}) {
+  return (
+    <div className="space-y-0">
+      <SummaryField label="Drafts" value={String(assetCount)} primary />
+      <SummaryField label="Generated" value={`${generatedCount} governed assets`} />
+      <SummaryField label="Plan items" value={`${planItemsCount} launch-kit tasks`} />
+      <SummaryField
+        label="Next"
+        value={assetCount > 0 ? "Review and refine assets" : "Generate launch-kit assets"}
+        needsInput={assetCount === 0}
+      />
+    </div>
+  );
+}
+
+function AssetWorkspaceSummary({ asset }: { asset: DerivedAsset }) {
+  return (
+    <div className="space-y-0">
+      <SummaryField label="Type" value={getCompactValue(asset.previewTitle)} primary />
+      <SummaryField label="Status" value={getCompactValue(asset.statusLabel)} />
+      <SummaryField label="Meta" value={getCompactValue(asset.meta)} />
+      <SummaryField
+        label="Canvas"
+        value={
+          asset.editorSurface === "landing-page"
+            ? "Conversational editor ready"
+            : "Open full review"
+        }
+        needsInput={asset.editorSurface !== "landing-page"}
+      />
+    </div>
+  );
+}
+
 function ApprovalSummary({
   approval,
   approvalSensitiveItemCount,
@@ -590,13 +807,15 @@ function SidebarPill({
 }: {
   label: string;
   muted?: boolean;
-  tone?: "default" | "amber" | "green";
+  tone?: "default" | "amber" | "green" | "blue";
 }) {
   const toneClass =
     tone === "amber"
       ? "border-[#c9973a40] bg-[#c9973a12] text-[#e8c26d]"
       : tone === "green"
         ? "border-[#2d7a5840] bg-[#2d7a5812] text-[#9ad0b7]"
+        : tone === "blue"
+          ? "border-[#3a6e9e44] bg-[#3a6e9e12] text-[#c4d8ec]"
         : muted
           ? "border-white/10 bg-white/[0.02] text-[#7f90a6]"
           : "border-white/10 bg-white/[0.03] text-[#9baabf]";
@@ -722,4 +941,42 @@ function getWorkspaceStage({
   }
 
   return { label: "Ready for approvals", tone: "green" as const };
+}
+
+function resolveActiveArtifact({
+  requestedPanel,
+  hasBrief,
+  hasPlan,
+  hasApprovals,
+}: {
+  requestedPanel?: string;
+  hasBrief: boolean;
+  hasPlan: boolean;
+  hasApprovals: boolean;
+}) {
+  if (requestedPanel === "approvals" && hasApprovals) {
+    return "approvals" as const;
+  }
+
+  if (requestedPanel === "assets" && hasPlan) {
+    return "assets" as const;
+  }
+
+  if (requestedPanel === "plan" && hasPlan) {
+    return "plan" as const;
+  }
+
+  if (requestedPanel === "brief" && hasBrief) {
+    return "brief" as const;
+  }
+
+  if (hasApprovals) {
+    return "approvals" as const;
+  }
+
+  if (hasPlan) {
+    return "plan" as const;
+  }
+
+  return "brief" as const;
 }

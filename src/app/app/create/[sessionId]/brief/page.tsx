@@ -3,7 +3,14 @@ import { OperatorShell } from "@/components/enterprise/operator-shell";
 import { generateProgramPlanAction } from "@/app/app/create/actions";
 import { BriefSidePanel } from "@/app/app/create/_components/brief-side-panel";
 import { ExportBriefButton } from "@/app/app/create/_components/brief-page-controls";
-import { EmptyStateCard, StatusBadge, getArrayStrings, parseRecord } from "@/app/app/create/_components/session-screen-primitives";
+import {
+  EmptyStateCard,
+  SessionTabs,
+  StatusBadge,
+  buildWorkspaceHref,
+  getArrayStrings,
+  parseRecord,
+} from "@/app/app/create/_components/session-screen-primitives";
 import { loadSessionScreenData } from "@/app/app/create/_lib/load-session-screen-data";
 import { getProgramBriefVersions } from "@/lib/supabase/queries";
 import { cn } from "@/lib/utils/cn";
@@ -96,12 +103,13 @@ export default async function ProgramBriefPage({ params }: BriefPageProps) {
       programs={programs}
       headerActions={
         <Link
-          href={`/app/create?session=${sessionId}`}
+          href={buildWorkspaceHref(sessionId, "brief")}
           className="rounded-md border border-white/10 px-3 py-1.5 text-[11.5px] font-medium text-[#9baabf] transition hover:bg-white/[0.04] hover:text-[#eae5dc]"
         >
           Back to AI Workspace
         </Link>
       }
+      workspacePrimaryMode
       rightPanel={
         <BriefSidePanel
           versions={versions}
@@ -113,12 +121,7 @@ export default async function ProgramBriefPage({ params }: BriefPageProps) {
       }
     >
       <div className="flex h-full flex-col bg-[#07101f]">
-        <BriefTabs
-          sessionId={sessionId}
-          planExists={activePlanExists}
-          approvalCount={data.approvals.filter((item) => item.status === "pending").length}
-          executionCount={data.executionRuns.length}
-        />
+        <SessionTabs sessionId={sessionId} active="brief" data={data} />
 
         <div className="flex-1 overflow-y-auto px-6 py-6">
           <div className="mb-4 flex items-center gap-2 text-[11px] text-[#5e7088]">
@@ -275,6 +278,7 @@ export default async function ProgramBriefPage({ params }: BriefPageProps) {
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function BriefTabs({
   sessionId,
   planExists,

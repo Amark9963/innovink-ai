@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prepareApprovalRequestAction } from "@/app/app/create/actions";
+import { buildWorkspaceHref } from "@/app/app/create/_components/session-screen-primitives";
 import type { Json } from "@/lib/supabase/database.types";
 import type {
   AgentCreateWorkspaceData,
@@ -224,7 +225,7 @@ export function AssetsReviewWorkspace({
                   key={asset.id}
                   href={
                     selectedAsset?.itemKey === asset.itemKey
-                      ? buildAssetDetailRoute(sessionId, asset.itemKey, "preview")
+                      ? buildPreferredAssetReviewHref(sessionId, asset, "preview")
                       : buildAssetRoute(sessionId, {
                           asset: asset.itemKey,
                           category,
@@ -276,7 +277,7 @@ export function AssetsReviewWorkspace({
                   key={asset.id}
                   href={
                     selectedAsset?.itemKey === asset.itemKey
-                      ? buildAssetDetailRoute(sessionId, asset.itemKey, "preview")
+                      ? buildPreferredAssetReviewHref(sessionId, asset, "preview")
                       : buildAssetRoute(sessionId, {
                           asset: asset.itemKey,
                           category,
@@ -382,10 +383,12 @@ export function AssetsReviewWorkspace({
                     Open in Innova Chat
                   </Link>
                   <Link
-                    href={buildAssetDetailRoute(sessionId, selectedAsset.itemKey, "preview")}
+                    href={buildPreferredAssetReviewHref(sessionId, selectedAsset, "preview")}
                     className="block rounded-md border border-white/10 px-3 py-2 text-center text-[12px] font-medium text-[#9baabf] transition hover:bg-white/[0.04] hover:text-[#eae5dc]"
                   >
-                    Open full asset
+                    {selectedAsset.editorSurface === "landing-page"
+                      ? "Open in AI Workspace"
+                      : "Open full asset"}
                   </Link>
                   {selectedAsset.editorSurface === "landing-page" && linkedProgramId ? (
                     <Link
@@ -710,6 +713,20 @@ export function buildAssetDetailRoute(
 
   const query = params.toString();
   return `/app/create/${sessionId}/assets/${assetKey}${query ? `?${query}` : ""}`;
+}
+
+function buildPreferredAssetReviewHref(
+  sessionId: string,
+  asset: DerivedAsset,
+  tab: AssetDetailTab,
+) {
+  if (asset.editorSurface === "landing-page") {
+    return buildWorkspaceHref(sessionId, "assets", {
+      asset: asset.itemKey,
+    });
+  }
+
+  return buildAssetDetailRoute(sessionId, asset.itemKey, tab);
 }
 
 function filterChip(active: boolean) {

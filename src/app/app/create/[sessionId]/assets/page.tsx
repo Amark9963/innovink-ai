@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { OperatorShell } from "@/components/enterprise/operator-shell";
 import { AssetsReviewWorkspace } from "@/app/app/create/_components/assets-review-workspace";
-import { SessionTabs } from "@/app/app/create/_components/session-screen-primitives";
+import {
+  SessionTabs,
+  buildWorkspaceHref,
+} from "@/app/app/create/_components/session-screen-primitives";
 import { loadSessionScreenData } from "@/app/app/create/_lib/load-session-screen-data";
 import { getApprovalRequestItems } from "@/lib/supabase/queries";
 
@@ -45,12 +48,13 @@ export default async function DraftAssetsPage({
       programs={programs}
       headerActions={
         <Link
-          href={`/app/create?session=${sessionId}`}
+          href={buildWorkspaceHref(sessionId, "assets")}
           className="rounded-md border border-white/10 px-3 py-1.5 text-[11.5px] font-medium text-[#9baabf] transition hover:bg-white/[0.04] hover:text-[#eae5dc]"
         >
           Back to AI Workspace
         </Link>
       }
+      workspacePrimaryMode
       mainClassName="overflow-hidden"
     >
       <div className="flex h-full flex-col bg-[#07101f]">

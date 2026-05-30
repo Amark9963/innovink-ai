@@ -2,7 +2,11 @@ import Link from "next/link";
 import { OperatorShell } from "@/components/enterprise/operator-shell";
 import { generateProgramPlanAction } from "@/app/app/create/actions";
 import { PlanReviewWorkspace } from "@/app/app/create/_components/plan-review-workspace";
-import { EmptyStateCard } from "@/app/app/create/_components/session-screen-primitives";
+import {
+  EmptyStateCard,
+  SessionTabs,
+  buildWorkspaceHref,
+} from "@/app/app/create/_components/session-screen-primitives";
 import { loadSessionScreenData } from "@/app/app/create/_lib/load-session-screen-data";
 import type { ProgramPlanItemSummary } from "@/lib/supabase/queries";
 
@@ -45,19 +49,16 @@ export default async function ExecutionPlanPage({ params }: PlanPageProps) {
       programs={programs}
       headerActions={
         <Link
-          href={`/app/create?session=${sessionId}`}
+          href={buildWorkspaceHref(sessionId, "plan")}
           className="rounded-md border border-white/10 px-3 py-1.5 text-[11.5px] font-medium text-[#9baabf] transition hover:bg-white/[0.04] hover:text-[#eae5dc]"
         >
           Back to AI Workspace
         </Link>
       }
+      workspacePrimaryMode
     >
       <div className="flex h-full flex-col bg-[#07101f]">
-        <PlanTabs
-          sessionId={sessionId}
-          approvalCount={data.approvals.filter((item) => item.status === "pending").length}
-          executionCount={data.executionRuns.length}
-        />
+        <SessionTabs sessionId={sessionId} active="plan" data={data} />
 
         <div className="flex-1 overflow-y-auto px-6 py-6">
           {data.plan ? (
@@ -110,6 +111,7 @@ export default async function ExecutionPlanPage({ params }: PlanPageProps) {
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function PlanTabs({
   sessionId,
   approvalCount,

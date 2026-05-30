@@ -365,6 +365,7 @@ async function finalizeAiRequestLog(params: {
   featureKey: string;
   modelName?: string;
   tokenCount?: number | null;
+  providerName?: string;
 }) {
   if (!params.aiRequestId) {
     return;
@@ -388,7 +389,7 @@ async function finalizeAiRequestLog(params: {
     await supabase.from("ai_usage_events").insert({
       ai_request_id: params.aiRequestId,
       feature_key: params.featureKey,
-      provider_name: "openai",
+      provider_name: params.providerName ?? "openai",
       model_name: params.modelName,
       token_count: params.tokenCount,
       organization_id: params.organizationId,
@@ -3441,7 +3442,11 @@ export async function refineLandingPageAssetDraftAction(formData: FormData) {
     typeof refinedDraft.title === "string" && refinedDraft.title.trim().length > 0
       ? refinedDraft.title
       : artifactRow.title;
-  const summary = `Landing page draft updated from the PM instruction. ${sections > 0 ? `${sections} sections` : "Structured sections preserved"} are ready for review before approval.`;
+  const summary =
+    typeof refinementData.assistantMessage === "string" &&
+    refinementData.assistantMessage.trim().length > 0
+      ? refinementData.assistantMessage
+      : `Landing page draft updated from the PM instruction. ${sections > 0 ? `${sections} sections` : "Structured sections preserved"} are ready for review before approval.`;
 
   const { data: assistantMessageRow, error: assistantMessageError } =
     await supabase
@@ -3526,9 +3531,11 @@ export async function refineLandingPageAssetDraftAction(formData: FormData) {
     modelName:
       typeof refinementData.model === "string" ? refinementData.model : undefined,
     tokenCount:
-      typeof refinementData.usage?.total_tokens === "number"
-        ? refinementData.usage.total_tokens
+      typeof refinementData.usage?.output_tokens === "number" &&
+      typeof refinementData.usage?.input_tokens === "number"
+        ? refinementData.usage.output_tokens + refinementData.usage.input_tokens
         : undefined,
+    providerName: "anthropic",
   });
 
   revalidatePath(`/app/create/${parsed.data.sessionId}/assets`);

@@ -81,6 +81,31 @@ export function StatusBadge({
   );
 }
 
+export type SessionWorkspacePanel =
+  | "brief"
+  | "plan"
+  | "assets"
+  | "approvals"
+  | "execution";
+
+export type WorkspaceAssetSelectionOptions = {
+  asset?: string | null;
+};
+
+export function buildWorkspaceHref(
+  sessionId: string,
+  panel: SessionWorkspacePanel = "brief",
+  options?: WorkspaceAssetSelectionOptions,
+) {
+  const search = new URLSearchParams();
+  search.set("session", sessionId);
+  search.set("panel", panel);
+  if (options?.asset) {
+    search.set("asset", options.asset);
+  }
+  return `/app/create?${search.toString()}`;
+}
+
 export function InfoRow({ label, value }: { label: string; value?: string | null }) {
   return (
     <div className="grid gap-2 border-b border-white/7 py-3 last:border-b-0 md:grid-cols-[140px_minmax(0,1fr)]">
@@ -108,78 +133,87 @@ export function SessionTabs({
   data: AgentCreateWorkspaceData;
 }) {
   const latestApproval = data.approvals[0] ?? null;
-
-  const tabs = [
-    { label: "Back to AI Workspace", href: `/app/create?session=${sessionId}`, key: "chat" as const },
-    {
-      label: "Brief",
-      href: `/app/create/${sessionId}/brief`,
-      key: "brief" as const,
-      badge: data.brief ? "ok" : null,
-    },
-    {
-      label: "Plan",
-      href: `/app/create/${sessionId}/plan`,
-      key: "plan" as const,
-      badge: data.plan ? "ok" : null,
-    },
-    {
-      label: "Assets",
-      href: `/app/create/${sessionId}/assets`,
-      key: "assets" as const,
-      count: data.planItems.length || null,
-    },
-    {
-      label: "Approvals",
-      href: `/app/create/${sessionId}/approvals`,
-      key: "approvals" as const,
-      count: data.approvals.filter((item) => item.status === "pending").length,
-      badge:
-        latestApproval?.status === "approved"
-          ? "ok"
-          : latestApproval?.status === "rejected"
-            ? "warn"
-            : null,
-    },
-    {
-      label: "Execution",
-      href: `/app/create/${sessionId}/execution`,
-      key: "execution" as const,
-      count: data.executionRuns.length,
-    },
-  ];
+  const activeLabel =
+    active === "chat"
+      ? "AI Workspace"
+      : active === "brief"
+        ? "Full Brief Review"
+        : active === "plan"
+          ? "Full Plan Review"
+          : active === "assets"
+            ? "Asset Review"
+            : active === "approvals"
+              ? "Approval Review"
+              : "Execution Review";
 
   return (
-    <div className="flex items-center gap-2 overflow-x-auto border-b border-white/7 bg-[#0c1525] px-5 py-2">
-      {tabs.map((tab) => (
+    <div className="flex items-center justify-between gap-3 overflow-x-auto border-b border-white/7 bg-[#0c1525] px-5 py-2.5">
+      <div className="flex items-center gap-3">
         <Link
-          key={tab.key}
-          href={tab.href}
-          className={cn(
-            "flex h-8 items-center gap-2 rounded-full border border-transparent px-3 text-[11.5px] text-[#8fa0b6] transition hover:bg-white/[0.04] hover:text-[#eae5dc]",
-            tab.key === "chat" && "mr-2 border-white/10 bg-white/[0.02] text-[#9baabf]",
-            active === tab.key && "border-[#b08a2838] bg-[#b08a2810] font-semibold text-[#ccaa4a]",
-          )}
+          href={buildWorkspaceHref(sessionId, active === "chat" ? "brief" : active)}
+          className="inline-flex h-8 items-center rounded-full border border-white/10 bg-white/[0.02] px-3 text-[11.5px] font-medium text-[#9baabf] transition hover:bg-white/[0.04] hover:text-[#eae5dc]"
         >
-          <span>{tab.label}</span>
-          {tab.badge === "ok" ? (
-            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-[#2d7a58] px-1 text-[8.5px] font-bold text-white">
-              OK
-            </span>
-          ) : null}
-          {tab.badge === "warn" ? (
-            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-[#c9973a] px-1 text-[9px] font-bold text-[#07101f]">
-              !
-            </span>
-          ) : null}
-          {tab.count ? (
-            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-[#b08a28] px-1 text-[8.5px] font-bold text-[#07101f]">
-              {tab.count}
-            </span>
-          ) : null}
+          Back to AI Workspace
         </Link>
-      ))}
+        <div className="hidden text-[11px] uppercase tracking-[0.12em] text-[#465973] md:block">
+          {activeLabel}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <ContextPill label="Brief" tone={data.brief ? "green" : "muted"} />
+        <ContextPill label="Plan" tone={data.plan ? "green" : "muted"} />
+        <ContextPill
+          label={`Assets ${data.planItems.length || 0}`}
+          tone={data.planItems.length > 0 ? "blue" : "muted"}
+        />
+        <ContextPill
+          label={
+            latestApproval?.status === "approved"
+              ? "Approvals approved"
+              : latestApproval?.status === "rejected"
+                ? "Approvals rejected"
+                : `Approvals ${data.approvals.filter((item) => item.status === "pending").length}`
+          }
+          tone={
+            latestApproval?.status === "approved"
+              ? "green"
+              : latestApproval?.status === "rejected"
+                ? "amber"
+                : data.approvals.length > 0
+                  ? "gold"
+                  : "muted"
+          }
+        />
+        <ContextPill
+          label={`Execution ${data.executionRuns.length}`}
+          tone={data.executionRuns.length > 0 ? "gold" : "muted"}
+        />
+      </div>
     </div>
+  );
+}
+
+function ContextPill({
+  label,
+  tone,
+}: {
+  label: string;
+  tone: "muted" | "green" | "gold" | "amber" | "blue";
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full border px-3 py-1 text-[10.5px] font-medium",
+        tone === "muted" && "border-white/10 text-[#6f8199]",
+        tone === "green" && "border-[#2d7a5840] bg-[#2d7a5810] text-[#9ad0b7]",
+        tone === "gold" && "border-[#b08a2838] bg-[#b08a2810] text-[#ccaa4a]",
+        tone === "amber" && "border-[#c9973a40] bg-[#c9973a10] text-[#e8c26d]",
+        tone === "blue" && "border-[#3a6e9e44] bg-[#3a6e9e12] text-[#c4d8ec]",
+      )}
+    >
+      {label}
+    </span>
   );
 }
 

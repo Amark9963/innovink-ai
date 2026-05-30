@@ -32,7 +32,7 @@ serve(async (request) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
-    const openAiApiKey = Deno.env.get("OPENAI_API_KEY");
+    const anthropicApiKey = Deno.env.get("ANTHROPIC_API_KEY");
     const authHeader = request.headers.get("Authorization");
 
     if (!supabaseUrl || !supabaseAnonKey) {
@@ -43,11 +43,11 @@ serve(async (request) => {
       return jsonResponse({ error: "Missing authorization header." }, 401);
     }
 
-    if (!openAiApiKey) {
+    if (!anthropicApiKey) {
       return jsonResponse(
         {
           error:
-            "OPENAI_API_KEY is not configured for landing page asset refinement.",
+            "ANTHROPIC_API_KEY is not configured for landing page asset refinement.",
         },
         500,
       );
@@ -79,6 +79,10 @@ serve(async (request) => {
       planTitle?: string | null;
       planSummary?: string | null;
       currentDraft?: LandingPageAssetDraft | null;
+      conversationTurns?: Array<{
+        role: "user" | "assistant";
+        content: string;
+      }>;
     };
 
     if (!body.sessionId || !body.instruction || !body.currentDraft) {
@@ -92,56 +96,65 @@ serve(async (request) => {
     }
 
     const prompt = buildRefinementPrompt(body);
-    const openAiResponse = await fetch("https://api.openai.com/v1/responses", {
+    const anthropicResponse = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${openAiApiKey}`,
+        "x-api-key": anthropicApiKey,
+        "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: Deno.env.get("OPENAI_MODEL") ?? "gpt-4.1",
-        input: prompt,
+        model: Deno.env.get("ANTHROPIC_MODEL") ?? "claude-sonnet-4-20250514",
+        system:
+          "You are Claude, acting as a premium enterprise landing-page editor inside Innovink. Always return a valid JSON object matching the requested schema exactly, with no markdown fences or extra commentary.",
         temperature: 0.35,
-        text: {
-          format: {
-            type: "json_schema",
-            name: "landing_page_asset_draft",
-            strict: true,
-            schema: landingPageAssetDraftSchema,
+        max_tokens: 2400,
+        messages: [
+          {
+            role: "user",
+            content: prompt,
           },
-        },
+        ],
       }),
     });
 
-    if (!openAiResponse.ok) {
-      const errorText = await openAiResponse.text();
+    if (!anthropicResponse.ok) {
+      const errorText = await anthropicResponse.text();
       return jsonResponse(
         {
-          error: "OpenAI landing page refinement failed.",
+          error: "Claude landing page refinement failed.",
           details: errorText,
         },
         502,
       );
     }
 
-    const openAiPayload = await openAiResponse.json();
-    const outputText = openAiPayload.output_text;
+    const anthropicPayload = await anthropicResponse.json();
+    const outputText = extractTextContent(anthropicPayload.content);
 
     if (!outputText) {
       return jsonResponse(
-        { error: "OpenAI returned no structured landing page output." },
+        { error: "Claude returned no structured landing page output." },
         502,
       );
     }
 
-    const draft = JSON.parse(outputText) as LandingPageAssetDraft;
+    const parsedOutput = JSON.parse(outputText) as {
+      assistantMessage: string;
+      draft: LandingPageAssetDraft;
+    };
+    const draft = parsedOutput.draft;
     validateLandingPageAssetDraft(draft);
 
     return jsonResponse({
       ok: true,
       draft,
-      model: openAiPayload.model ?? Deno.env.get("OPENAI_MODEL") ?? "gpt-4.1",
-      usage: openAiPayload.usage ?? null,
+      assistantMessage: parsedOutput.assistantMessage,
+      model:
+        anthropicPayload.model ??
+        Deno.env.get("ANTHROPIC_MODEL") ??
+        "claude-sonnet-4-20250514",
+      usage: anthropicPayload.usage ?? null,
     });
   } catch (error) {
     return jsonResponse(
@@ -168,9 +181,10 @@ function buildRefinementPrompt(input: {
     "You are editing a governed PM workspace asset, not publishing a final page.",
     "Apply the user's instruction to the current draft while preserving the underlying program intent.",
     "Keep the tone premium, corporate, and operationally clear.",
+    "The PM may ask for branding colors, hierarchy changes, stronger executive tone, section additions, or CTA refinements. Honor those requests while staying enterprise-grade.",
     "Do not invent prize amounts, legal claims, or exact dates if they are not present in the input context.",
-    "Preserve the same overall structured draft shape.",
-    "Return structured JSON only.",
+    "Preserve the same overall structured landing-page object shape even when reorganizing copy.",
+    "Return JSON only. The top-level object must contain assistantMessage and draft.",
     "",
     `Instruction: ${input.instruction ?? ""}`,
     `Brief title: ${input.briefTitle ?? ""}`,
@@ -178,7 +192,11 @@ function buildRefinementPrompt(input: {
     `Current brief JSON: ${JSON.stringify(input.currentBrief ?? {})}`,
     `Plan title: ${input.planTitle ?? ""}`,
     `Plan summary: ${input.planSummary ?? ""}`,
+    `Recent landing-page editor turns: ${JSON.stringify(input.conversationTurns ?? [])}`,
     `Current landing page draft: ${JSON.stringify(input.currentDraft ?? {})}`,
+    "",
+    "Required JSON schema:",
+    JSON.stringify(landingPageEditorResponseSchema),
   ].join("\n");
 }
 
@@ -200,6 +218,26 @@ function jsonResponse(body: Record<string, unknown>, status = 200) {
       "Content-Type": "application/json",
     },
   });
+}
+
+function extractTextContent(content: unknown) {
+  if (!Array.isArray(content)) {
+    return null;
+  }
+
+  return content
+    .map((block) =>
+      typeof block === "object" &&
+      block !== null &&
+      "type" in block &&
+      "text" in block &&
+      (block as { type?: unknown }).type === "text" &&
+      typeof (block as { text?: unknown }).text === "string"
+        ? (block as { text: string }).text
+        : "",
+    )
+    .join("")
+    .trim();
 }
 
 const landingPageAssetDraftSchema = {
@@ -239,5 +277,15 @@ const landingPageAssetDraftSchema = {
         },
       },
     },
+  },
+};
+
+const landingPageEditorResponseSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["assistantMessage", "draft"],
+  properties: {
+    assistantMessage: { type: "string" },
+    draft: landingPageAssetDraftSchema,
   },
 };
