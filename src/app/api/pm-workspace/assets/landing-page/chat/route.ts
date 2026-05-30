@@ -137,6 +137,49 @@ function chunkAssistantText(value: string) {
     .filter(Boolean);
 }
 
+async function resolveFunctionInvokeErrorMessage(
+  error: unknown,
+  fallbackMessage: string,
+) {
+  const baseMessage =
+    error instanceof Error && error.message.trim().length > 0
+      ? error.message
+      : fallbackMessage;
+
+  if (!error || typeof error !== "object") {
+    return baseMessage;
+  }
+
+  const maybeContext = "context" in error ? (error as { context?: unknown }).context : null;
+  if (!(maybeContext instanceof Response)) {
+    return baseMessage;
+  }
+
+  try {
+    const payload = (await maybeContext.clone().json()) as {
+      error?: string;
+      details?: string;
+    };
+
+    if (typeof payload.error === "string" && payload.error.trim().length > 0) {
+      return typeof payload.details === "string" && payload.details.trim().length > 0
+        ? `${payload.error}: ${payload.details}`
+        : payload.error;
+    }
+  } catch {
+    try {
+      const text = await maybeContext.clone().text();
+      if (text.trim().length > 0) {
+        return text;
+      }
+    } catch {
+      return baseMessage;
+    }
+  }
+
+  return baseMessage;
+}
+
 function buildFallbackAssistantMessage(params: {
   instruction: string;
   draftTitle: string;
@@ -329,9 +372,15 @@ export async function POST(request: Request) {
           });
 
         if (refinementError || !refinementData?.draft) {
-          const errorMessage =
-            refinementError?.message ??
-            "Landing page refinement did not return a structured draft.";
+          const errorMessage = refinementError
+            ? await resolveFunctionInvokeErrorMessage(
+                refinementError,
+                "Landing page refinement did not return a structured draft.",
+              )
+            : typeof refinementData?.error === "string" &&
+                refinementData.error.trim().length > 0
+              ? refinementData.error
+              : "Landing page refinement did not return a structured draft.";
 
           await finalizeAiRequestLog({
             aiRequestId,

@@ -154,17 +154,19 @@ serve(async (request) => {
       );
     }
 
-    const parsedOutput = JSON.parse(outputText) as {
-      assistantMessage: string;
-      draft: LandingPageAssetDraft;
-    };
-    const draft = parsedOutput.draft;
+    const parsedOutput = parseClaudeEditorOutput(outputText);
+    const draft = normalizeLandingPageAssetDraft(
+      parsedOutput.draft,
+      body.currentDraft,
+    );
     validateLandingPageAssetDraft(draft);
 
     return jsonResponse({
       ok: true,
       draft,
-      assistantMessage: parsedOutput.assistantMessage,
+      assistantMessage:
+        parsedOutput.assistantMessage?.trim() ||
+        buildFallbackAssistantMessage(body.instruction, draft.title),
       model:
         anthropicPayload.model ??
         Deno.env.get("ANTHROPIC_MODEL") ??
@@ -190,6 +192,10 @@ function buildRefinementPrompt(input: {
   planTitle?: string | null;
   planSummary?: string | null;
   currentDraft?: LandingPageAssetDraft | null;
+  conversationTurns?: Array<{
+    role: "user" | "assistant";
+    content: string;
+  }>;
 }) {
   return [
     "You are refining a pre-execution landing page draft for an enterprise innovation platform.",
@@ -224,6 +230,174 @@ function validateLandingPageAssetDraft(draft: LandingPageAssetDraft) {
   if (!Array.isArray(draft.sections) || draft.sections.length === 0) {
     throw new Error("Landing page draft did not include any sections.");
   }
+}
+
+function buildFallbackAssistantMessage(instruction: string, title: string) {
+  return `I revised ${title} based on your request: "${instruction}". Review the updated landing page draft and continue refining it before approvals.`;
+}
+
+function parseClaudeEditorOutput(outputText: string) {
+  const cleaned = outputText
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  const candidate = extractJsonObject(cleaned);
+  return JSON.parse(candidate) as {
+    assistantMessage?: string;
+    draft?: unknown;
+  };
+}
+
+function extractJsonObject(value: string) {
+  const firstBrace = value.indexOf("{");
+  const lastBrace = value.lastIndexOf("}");
+
+  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+    throw new Error("Claude did not return a valid JSON object.");
+  }
+
+  return value.slice(firstBrace, lastBrace + 1);
+}
+
+function normalizeLandingPageAssetDraft(
+  value: unknown,
+  fallbackDraft: LandingPageAssetDraft,
+): LandingPageAssetDraft {
+  const source = isRecord(value) ? value : {};
+  const fallback = fallbackDraft ?? {
+    title: "Landing Page Draft",
+    seoTitle: "Landing Page Draft",
+    seoDescription: "Landing page draft",
+    themeKey: "enterprise-navy",
+    sections: [],
+  };
+
+  const sections = normalizeSections(source.sections, fallback.sections);
+
+  return {
+    title: pickString(source.title, fallback.title),
+    seoTitle: pickString(source.seoTitle, fallback.seoTitle),
+    seoDescription: pickString(source.seoDescription, fallback.seoDescription),
+    themeKey: pickString(source.themeKey, fallback.themeKey),
+    theme: normalizeTheme(source.theme, fallback.theme),
+    sections,
+  };
+}
+
+function normalizeSections(
+  value: unknown,
+  fallbackSections: LandingPageAssetSection[],
+) {
+  const source = Array.isArray(value) ? value : [];
+  const sectionsByKey = new Map<string, LandingPageAssetSection>();
+
+  for (const fallbackSection of fallbackSections) {
+    if (typeof fallbackSection.sectionKey === "string") {
+      sectionsByKey.set(fallbackSection.sectionKey, { ...fallbackSection });
+    }
+  }
+
+  for (const section of source) {
+    if (!isRecord(section)) {
+      continue;
+    }
+
+    const sectionKey = pickEnumString(section.sectionKey, [
+      "hero",
+      "overview",
+      "timeline",
+      "eligibility",
+      "judging",
+      "faq",
+      "cta",
+    ]);
+
+    if (!sectionKey) {
+      continue;
+    }
+
+    const fallback = sectionsByKey.get(sectionKey);
+    sectionsByKey.set(sectionKey, {
+      sectionKey,
+      displayOrder: pickInteger(
+        section.displayOrder,
+        fallback?.displayOrder ?? (sectionsByKey.size + 1) * 10,
+      ),
+      headline: pickOptionalString(section.headline, fallback?.headline),
+      subheadline: pickOptionalString(section.subheadline, fallback?.subheadline),
+      body: pickOptionalString(section.body, fallback?.body),
+      ctaLabel: pickOptionalString(section.ctaLabel, fallback?.ctaLabel),
+    });
+  }
+
+  return Array.from(sectionsByKey.values()).sort(
+    (left, right) => left.displayOrder - right.displayOrder,
+  );
+}
+
+function normalizeTheme(
+  value: unknown,
+  fallbackTheme: LandingPageAssetDraft["theme"],
+) {
+  const source = isRecord(value) ? value : {};
+  const fallback = fallbackTheme ?? {};
+  const theme = {
+    pageBackground: pickOptionalString(source.pageBackground, fallback.pageBackground),
+    surfaceBackground: pickOptionalString(
+      source.surfaceBackground,
+      fallback.surfaceBackground,
+    ),
+    heroBackground: pickOptionalString(source.heroBackground, fallback.heroBackground),
+    heroForeground: pickOptionalString(source.heroForeground, fallback.heroForeground),
+    headingColor: pickOptionalString(source.headingColor, fallback.headingColor),
+    bodyColor: pickOptionalString(source.bodyColor, fallback.bodyColor),
+    mutedTextColor: pickOptionalString(source.mutedTextColor, fallback.mutedTextColor),
+    accentColor: pickOptionalString(source.accentColor, fallback.accentColor),
+    borderColor: pickOptionalString(source.borderColor, fallback.borderColor),
+    ctaTextColor: pickOptionalString(source.ctaTextColor, fallback.ctaTextColor),
+    secondaryButtonBackground: pickOptionalString(
+      source.secondaryButtonBackground,
+      fallback.secondaryButtonBackground,
+    ),
+    secondaryButtonTextColor: pickOptionalString(
+      source.secondaryButtonTextColor,
+      fallback.secondaryButtonTextColor,
+    ),
+    secondaryButtonBorderColor: pickOptionalString(
+      source.secondaryButtonBorderColor,
+      fallback.secondaryButtonBorderColor,
+    ),
+  };
+
+  return Object.values(theme).some((entry) => typeof entry === "string")
+    ? theme
+    : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function pickString(value: unknown, fallback: string) {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : fallback;
+}
+
+function pickOptionalString(value: unknown, fallback?: string) {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : fallback;
+}
+
+function pickInteger(value: unknown, fallback: number) {
+  return typeof value === "number" && Number.isInteger(value) ? value : fallback;
+}
+
+function pickEnumString<T extends string>(value: unknown, allowed: T[]) {
+  return typeof value === "string" && allowed.includes(value as T)
+    ? (value as T)
+    : null;
 }
 
 function jsonResponse(body: Record<string, unknown>, status = 200) {
