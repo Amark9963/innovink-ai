@@ -1,5 +1,124 @@
 @import "tailwindcss";
 
+/* ─────────────────────────────────────────────────────────────────
+   WORKSPACE DARK THEME TOKENS
+   These tokens are used by the PM AI Workspace and must match
+   system.css exactly so Tailwind arbitrary values like
+   bg-[var(--ws-bg-panel)] produce the correct visual output.
+   Reference: screens/78-81 mockups + system.css
+────────────────────────────────────────────────────────────────── */
+:root {
+  /* Backgrounds */
+  --ws-bg-base:     #07101F;
+  --ws-bg-surface:  #0C1525;
+  --ws-bg-panel:    #111E30;
+  --ws-bg-card:     #162034;
+  --ws-bg-elevated: #1B2840;
+  --ws-bg-input:    #0A1422;
+
+  /* Borders */
+  --ws-b-faint:   rgba(255,255,255,0.035);
+  --ws-b-subtle:  rgba(255,255,255,0.07);
+  --ws-b-default: rgba(255,255,255,0.10);
+  --ws-b-strong:  rgba(255,255,255,0.16);
+
+  /* Text */
+  --ws-t-primary:   #EAE5DC;
+  --ws-t-secondary: #9BAABF;
+  --ws-t-tertiary:  #5E7088;
+  --ws-t-muted:     #374D65;
+
+  /* Gold / brand accent */
+  --ws-gold:        #B08A28;
+  --ws-gold-bright: #CCAA4A;
+  --ws-gold-sub:    rgba(176,138,40,0.10);
+  --ws-gold-bdr:    rgba(176,138,40,0.22);
+  --ws-gold-glow:   rgba(176,138,40,0.06);
+
+  /* Green (approved, success, live) */
+  --ws-green:        #2D7A58;
+  --ws-green-bright: #3E9A70;
+  --ws-green-sub:    rgba(45,122,88,0.12);
+  --ws-green-bdr:    rgba(45,122,88,0.25);
+
+  /* Amber (pending, warning, needs input) */
+  --ws-amber:        #C9973A;
+  --ws-amber-bright: #DBA84A;
+  --ws-amber-sub:    rgba(201,151,58,0.10);
+  --ws-amber-bdr:    rgba(201,151,58,0.22);
+
+  /* Blue (plan, data, links) */
+  --ws-blue:        #3A6E9E;
+  --ws-blue-bright: #4D87BC;
+  --ws-blue-sub:    rgba(58,110,158,0.12);
+  --ws-blue-bdr:    rgba(58,110,158,0.22);
+
+  /* Red (danger, rejected) */
+  --ws-red:        #9B3A3A;
+  --ws-red-bright: #BC4F4F;
+  --ws-red-sub:    rgba(155,58,58,0.12);
+  --ws-red-bdr:    rgba(155,58,58,0.22);
+
+  /* Radius */
+  --ws-r-xs:   3px;
+  --ws-r-sm:   4px;
+  --ws-r-md:   6px;
+  --ws-r-lg:   8px;
+  --ws-r-xl:   12px;
+  --ws-r-2xl:  16px;
+
+  /* Shadows */
+  --ws-shadow-sm:   0 1px 4px rgba(0,0,0,0.35);
+  --ws-shadow-md:   0 4px 16px rgba(0,0,0,0.45);
+  --ws-shadow-lg:   0 8px 28px rgba(0,0,0,0.55);
+  --ws-shadow-xl:   0 16px 48px rgba(0,0,0,0.65);
+  --ws-shadow-gold: 0 4px 20px rgba(176,138,40,0.20);
+}
+
+.pm-workspace-theme {
+  /* Workspace-local fallback so agent surfaces do not depend on root-token hydration timing. */
+  --ws-bg-base:     #07101F;
+  --ws-bg-surface:  #0C1525;
+  --ws-bg-panel:    #111E30;
+  --ws-bg-card:     #162034;
+  --ws-bg-elevated: #1B2840;
+  --ws-bg-input:    #0A1422;
+  --ws-b-faint:   rgba(255,255,255,0.035);
+  --ws-b-subtle:  rgba(255,255,255,0.07);
+  --ws-b-default: rgba(255,255,255,0.10);
+  --ws-b-strong:  rgba(255,255,255,0.16);
+  --ws-t-primary:   #EAE5DC;
+  --ws-t-secondary: #9BAABF;
+  --ws-t-tertiary:  #5E7088;
+  --ws-t-muted:     #374D65;
+  --ws-gold:        #B08A28;
+  --ws-gold-bright: #CCAA4A;
+  --ws-gold-sub:    rgba(176,138,40,0.10);
+  --ws-gold-bdr:    rgba(176,138,40,0.22);
+  --ws-green:        #2D7A58;
+  --ws-green-bright: #3E9A70;
+  --ws-green-sub:    rgba(45,122,88,0.12);
+  --ws-green-bdr:    rgba(45,122,88,0.25);
+  --ws-amber:        #C9973A;
+  --ws-amber-bright: #DBA84A;
+  --ws-amber-sub:    rgba(201,151,58,0.10);
+  --ws-amber-bdr:    rgba(201,151,58,0.22);
+  --ws-blue:        #3A6E9E;
+  --ws-blue-bright: #4D87BC;
+  --ws-blue-sub:    rgba(58,110,158,0.12);
+  --ws-blue-bdr:    rgba(58,110,158,0.22);
+  --ws-red:        #9B3A3A;
+  --ws-red-bright: #BC4F4F;
+  --ws-red-sub:    rgba(155,58,58,0.12);
+  --ws-red-bdr:    rgba(155,58,58,0.22);
+  --ws-r-xs:   3px;
+  --ws-r-sm:   4px;
+  --ws-r-md:   6px;
+  --ws-r-lg:   8px;
+  --ws-r-xl:   12px;
+  --ws-r-2xl:  16px;
+}
+
 :root {
   --background: #f4f6f8;
   --foreground: #102235;

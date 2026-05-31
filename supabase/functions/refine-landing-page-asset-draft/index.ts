@@ -154,7 +154,7 @@ serve(async (request) => {
       );
     }
 
-    const parsedOutput = parseClaudeEditorOutput(outputText);
+    const parsedOutput = safeParseClaudeEditorOutput(outputText);
     const draft = normalizeLandingPageAssetDraft(
       parsedOutput.draft,
       body.currentDraft,
@@ -174,10 +174,12 @@ serve(async (request) => {
       usage: anthropicPayload.usage ?? null,
     });
   } catch (error) {
+    console.error("refine-landing-page-asset-draft failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
     return jsonResponse(
       {
-        error:
-          error instanceof Error ? error.message : "Unknown function error.",
+        error: "Landing page refinement could not be completed.",
       },
       500,
     );
@@ -248,6 +250,14 @@ function parseClaudeEditorOutput(outputText: string) {
     assistantMessage?: string;
     draft?: unknown;
   };
+}
+
+function safeParseClaudeEditorOutput(outputText: string) {
+  try {
+    return parseClaudeEditorOutput(outputText);
+  } catch {
+    return {};
+  }
 }
 
 function extractJsonObject(value: string) {

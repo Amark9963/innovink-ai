@@ -1,4 +1,7 @@
+ "use client";
+
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import type {
   AgentCreateWorkspaceData,
   ExecutionRunStepSummary,
@@ -6,9 +9,9 @@ import type {
   ProgramAccessRow,
   ProgramPlanItemSummary,
 } from "@/lib/supabase/queries";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   EmptyStateCard,
-  SessionTabs,
   StatusBadge,
   formatDate,
   formatDateTime,
@@ -26,29 +29,91 @@ export function ExecutionReviewWorkspace({
   programs,
 }: ExecutionReviewWorkspaceProps) {
   const latestRun = data.executionRuns[0] ?? null;
+  const [liveSteps, setLiveSteps] = useState(data.latestExecutionSteps);
+  const [expandedFailedStepId, setExpandedFailedStepId] = useState<string | null>(null);
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+
+  useEffect(() => {
+    if (!latestRun?.id) {
+      return;
+    }
+
+    const channel = supabase
+      .channel(`execution-run-steps-${latestRun.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "execution_run_steps",
+          filter: `execution_run_id=eq.${latestRun.id}`,
+        },
+        (payload) => {
+          const record = (payload.new || payload.old) as
+            | {
+                id: string;
+                execution_run_id: string;
+                step_key: string;
+                step_type: string;
+                title: string;
+                display_order: number;
+                status: ExecutionRunStepSummary["status"];
+                target_type: string | null;
+                target_id: string | null;
+                output_payload: ExecutionRunStepSummary["outputPayload"];
+                error_payload: ExecutionRunStepSummary["errorPayload"];
+              }
+            | undefined;
+
+          if (!record) {
+            return;
+          }
+
+          setLiveSteps((current) =>
+            upsertExecutionStep(current, {
+              id: record.id,
+              executionRunId: record.execution_run_id,
+              stepKey: record.step_key,
+              stepType: record.step_type,
+              title: record.title,
+              displayOrder: record.display_order,
+              status: record.status,
+              targetType: record.target_type,
+              targetId: record.target_id,
+              outputPayload: record.output_payload,
+              errorPayload: record.error_payload,
+            }),
+          );
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [latestRun?.id, supabase]);
+
   const linkedProgram =
     (data.brief?.programId
       ? programs.find((program) => program.id === data.brief?.programId)
       : null) ?? null;
 
-  const stepMap = new Map(data.latestExecutionSteps.map((step) => [step.stepKey, step]));
+  const stepMap = new Map(liveSteps.map((step) => [step.stepKey, step]));
   const totalPlanItems = data.planItems.length;
-  const completedSteps = data.latestExecutionSteps.filter((step) => step.status === "completed").length;
-  const partialSteps = data.latestExecutionSteps.filter((step) => step.status === "partial").length;
-  const failedSteps = data.latestExecutionSteps.filter((step) => step.status === "failed").length;
+  const completedSteps = liveSteps.filter((step) => step.status === "completed").length;
+  const partialSteps = liveSteps.filter((step) => step.status === "partial").length;
+  const failedSteps = liveSteps.filter((step) => step.status === "failed").length;
   const blockedCount = partialSteps + failedSteps;
   const completionPercent =
     totalPlanItems > 0 ? Math.round((completedSteps / totalPlanItems) * 100) : 0;
   const phaseRows = buildExecutionRows(data.planItems, stepMap, latestRun);
   const timelineRows = phaseRows.slice(0, Math.max(phaseRows.length, 8));
-  const recentEvents = buildRecentEvents(data.executionRuns, data.latestExecutionSteps, linkedProgram);
+  const recentEvents = buildRecentEvents(data.executionRuns, liveSteps, linkedProgram);
   const latestApproval = data.approvals[0] ?? null;
   const pendingApprovals = data.approvals.filter((item) => item.status === "pending").length;
 
   return (
     <div className="flex h-full flex-col bg-[#07101f]">
-      <SessionTabs sessionId={sessionId} active="execution" data={data} />
-
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_320px] overflow-hidden">
         <main className="overflow-y-auto px-6 py-6">
           <div className="mb-6 grid gap-3 md:grid-cols-4">
@@ -157,6 +222,58 @@ export function ExecutionReviewWorkspace({
                 : "No linked program record yet"
             }
           />
+
+          {liveSteps.length > 0 ? (
+            <div className="mb-4 rounded-[var(--ws-r-lg)] border border-[color:var(--ws-b-subtle)] bg-[var(--ws-bg-card)] p-3">
+              <div className="mb-3 text-[9px] font-bold uppercase tracking-[.1em] text-[var(--ws-t-muted)]">
+                Foundation execution
+              </div>
+              <div className="space-y-1">
+                {liveSteps.map((step) => {
+                  const errorText = getExecutionStepErrorText(step.errorPayload);
+                  const isExpanded = expandedFailedStepId === step.id;
+
+                  return (
+                    <div key={step.id}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpandedFailedStepId((current) =>
+                            current === step.id ? null : step.id,
+                          )
+                        }
+                        disabled={step.status !== "failed" || !errorText}
+                        className={`flex w-full items-center gap-2.5 py-1 text-left ${
+                          step.status !== "failed" || !errorText
+                            ? "cursor-default"
+                            : "cursor-pointer"
+                        }`}
+                      >
+                        <StepStatusIcon status={step.status} />
+                        <span
+                          className={`flex-1 text-[12px] ${getExecutionStepStatusTextClass(
+                            step.status,
+                          )}`}
+                        >
+                          {step.title}
+                        </span>
+                        {step.status === "running" ? (
+                          <span className="shrink-0 text-[10.5px] text-[var(--ws-gold-bright)]">
+                            Live
+                          </span>
+                        ) : null}
+                      </button>
+                      {step.status === "failed" && errorText && isExpanded ? (
+                        <div className="ml-[26px] rounded-[var(--ws-r-md)] border border-[color:var(--ws-red-bdr)] bg-[var(--ws-red-sub)] px-3 py-2 text-[10.5px] leading-relaxed text-[var(--ws-red-bright)]">
+                          {errorText}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
 
           <div className="mb-3 mt-6 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5e7088]">
             Ops Log
@@ -511,4 +628,121 @@ function formatTimeLabel(value: string) {
     hour: "numeric",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function upsertExecutionStep(
+  current: ExecutionRunStepSummary[],
+  incoming: ExecutionRunStepSummary,
+) {
+  const next = [...current];
+  const existingIndex = next.findIndex((step) => step.id === incoming.id);
+
+  if (existingIndex >= 0) {
+    next[existingIndex] = incoming;
+  } else {
+    next.push(incoming);
+  }
+
+  return next.sort((left, right) => left.displayOrder - right.displayOrder);
+}
+
+function getExecutionStepStatusTextClass(status: ExecutionRunStepSummary["status"]) {
+  if (status === "running") {
+    return "text-[var(--ws-gold-bright)]";
+  }
+
+  if (status === "completed") {
+    return "text-[var(--ws-t-primary)]";
+  }
+
+  if (status === "failed") {
+    return "text-[var(--ws-red-bright)]";
+  }
+
+  return "text-[var(--ws-t-muted)]";
+}
+
+function getExecutionStepErrorText(errorPayload: ExecutionRunStepSummary["errorPayload"]) {
+  if (!errorPayload || typeof errorPayload !== "object" || Array.isArray(errorPayload)) {
+    return null;
+  }
+
+  const message = (errorPayload as Record<string, unknown>).message;
+  return typeof message === "string" && message.trim().length > 0 ? message : null;
+}
+
+function StepStatusIcon({ status }: { status: ExecutionRunStepSummary["status"] }) {
+  if (status === "running") {
+    return (
+      <span className="flex h-4 w-4 items-center justify-center rounded-full border border-[color:var(--ws-gold-bdr)] bg-[var(--ws-gold-sub)]">
+        <svg
+          width="8"
+          height="8"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          className="animate-spin text-[var(--ws-gold-bright)]"
+          aria-hidden
+        >
+          <path d="M12 2v4" />
+          <path d="M12 18v4" opacity="0.3" />
+          <path d="M4.93 4.93l2.83 2.83" opacity="0.6" />
+          <path d="M16.24 16.24l2.83 2.83" opacity="0.3" />
+          <path d="M2 12h4" opacity="0.5" />
+          <path d="M18 12h4" opacity="0.3" />
+          <path d="M4.93 19.07l2.83-2.83" opacity="0.4" />
+          <path d="M16.24 7.76l2.83-2.83" opacity="0.3" />
+        </svg>
+      </span>
+    );
+  }
+
+  if (status === "completed") {
+    return (
+      <span className="flex h-4 w-4 items-center justify-center rounded-full border border-[color:var(--ws-green-bdr)] bg-[var(--ws-green-sub)]">
+        <svg
+          width="8"
+          height="8"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="text-[var(--ws-green-bright)]"
+          aria-hidden
+        >
+          <path d="M2 8l4 4 8-8" />
+        </svg>
+      </span>
+    );
+  }
+
+  if (status === "failed") {
+    return (
+      <span className="flex h-4 w-4 items-center justify-center rounded-full border border-[color:var(--ws-red-bdr)] bg-[var(--ws-red-sub)]">
+        <svg
+          width="8"
+          height="8"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          className="text-[var(--ws-red-bright)]"
+          aria-hidden
+        >
+          <path d="M4 4l8 8M12 4l-8 8" />
+        </svg>
+      </span>
+    );
+  }
+
+  return (
+    <span className="flex h-4 w-4 items-center justify-center rounded-full border border-[color:var(--ws-b-subtle)] bg-[var(--ws-b-faint)]">
+      <span className="h-1.5 w-1.5 rounded-full bg-[var(--ws-t-muted)]" />
+    </span>
+  );
 }

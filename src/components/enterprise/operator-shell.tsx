@@ -66,7 +66,7 @@ export function OperatorShell({
   return (
     <div
       className={cn(
-        "grid min-h-screen bg-[#07101f] text-[#eae5dc]",
+        "grid h-screen overflow-hidden bg-[#07101f] text-[#eae5dc]",
         hideHeader
           ? hideSidebar
             ? rightPanel

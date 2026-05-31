@@ -3,10 +3,7 @@ import { OperatorShell } from "@/components/enterprise/operator-shell";
 import { loadSessionScreenData } from "@/app/app/create/_lib/load-session-screen-data";
 import { ExecutionExportButton } from "@/app/app/create/_components/execution-export-button";
 import { ExecutionReviewWorkspace } from "@/app/app/create/_components/execution-review-workspace";
-import {
-  SessionTabs,
-  buildWorkspaceHref,
-} from "@/app/app/create/_components/session-screen-primitives";
+import { buildWorkspaceHref } from "@/app/app/create/_components/session-screen-primitives";
 
 type ExecutionPageProps = {
   params: Promise<{
@@ -34,7 +31,7 @@ export default async function ExecutionPage({ params }: ExecutionPageProps) {
         <>
           <Link
             href={buildWorkspaceHref(sessionId, "execution")}
-            className="rounded-md border border-white/10 px-3 py-1.5 text-[11.5px] font-medium text-[#9baabf] transition hover:bg-white/[0.04] hover:text-[#eae5dc]"
+            className="rounded-md border border-[rgba(255,255,255,0.10)] px-3 py-1.5 text-[11.5px] font-medium text-[#9baabf] transition hover:bg-white/[0.04] hover:text-[#eae5dc]"
           >
             Back to AI Workspace
           </Link>
@@ -44,8 +41,7 @@ export default async function ExecutionPage({ params }: ExecutionPageProps) {
       workspacePrimaryMode
       mainClassName="overflow-hidden"
     >
-      <div className="flex h-full flex-col bg-[#07101f]">
-        <SessionTabs sessionId={sessionId} active="execution" data={data} />
+      <div className="pm-workspace-theme flex h-full flex-col bg-[var(--ws-bg-base)]">
         <ExecutionReviewWorkspace sessionId={sessionId} data={data} programs={programs} />
       </div>
     </OperatorShell>

@@ -8,7 +8,9 @@ export type PmPlannerIntent =
   | "refine_brief"
   | "answer_open_questions"
   | "recommend_next_step"
-  | "generate_launch_assets";
+  | "generate_launch_assets"
+  | "generate_plan"
+  | "prepare_approvals";
 
 export type PmWorkspaceStage =
   | "goal_definition"
@@ -42,6 +44,8 @@ export type PmPlannerDecision = {
   recommendation: PmPlannerRecommendation;
   shouldGenerateBrief: boolean;
   shouldGenerateAssets: boolean;
+  shouldGeneratePlan: boolean;
+  shouldPrepareApprovals: boolean;
   planningSummary: string;
   runningSummary: string;
   completionSummary: string;
@@ -91,6 +95,51 @@ const ASSET_GENERATION_PATTERNS = [
   "generate launch kit",
   "generate all assets",
   "generate all of them",
+];
+
+const PLAN_GENERATION_PATTERNS = [
+  "generate the plan",
+  "generate plan",
+  "generate the execution plan",
+  "generate execution plan",
+  "create the plan",
+  "create execution plan",
+  "draft the plan",
+  "draft execution plan",
+  "build the plan",
+  "make the plan",
+  "let's generate",
+  "go ahead and generate",
+  "go ahead with the plan",
+  "generate it",
+  "generate that",
+  "ready to generate",
+  "proceed with the plan",
+  "proceed to plan",
+  "move to plan",
+  "move on to the plan",
+  "create the execution plan",
+];
+
+const APPROVAL_PREP_PATTERNS = [
+  "prepare approval",
+  "prepare the approval",
+  "create approval",
+  "create the approval",
+  "approval packet",
+  "prepare for approval",
+  "ready for approval",
+  "request approval",
+  "generate approval",
+  "submit for approval",
+  "move to approval",
+  "proceed to approval",
+  "package the approval",
+  "package for approval",
+  "let's approve",
+  "ready to approve",
+  "prepare the packet",
+  "create the packet",
 ];
 
 const GOAL_DEFINITION_PATTERNS = [
@@ -170,6 +219,26 @@ export function classifyPmPlannerIntent(input: PmPlannerInput): PmPlannerIntent 
     return "recommend_next_step";
   }
 
+  // prepare_approvals: only when a plan already exists and no pending approval
+  if (
+    input.hasPlan &&
+    !input.hasPendingApproval &&
+    !input.isApproved &&
+    matchesAny(normalized, APPROVAL_PREP_PATTERNS)
+  ) {
+    return "prepare_approvals";
+  }
+
+  // generate_plan: only when brief is ready (no open questions) and no plan yet
+  if (
+    hasBrief &&
+    input.openQuestionCount === 0 &&
+    !input.hasPlan &&
+    matchesAny(normalized, PLAN_GENERATION_PATTERNS)
+  ) {
+    return "generate_plan";
+  }
+
   if (input.hasPlan && matchesAny(normalized, ASSET_GENERATION_PATTERNS)) {
     return "generate_launch_assets";
   }
@@ -203,191 +272,81 @@ export function planPmWorkspaceRun(input: PmPlannerInput): PmPlannerDecision {
   switch (intent) {
     case "define_program_goal":
       return {
-        intent,
-        stage,
+        intent, stage,
         runType: "program_bootstrap",
         taskPlan: [
-          {
-            taskType: "inspect_context",
-            title: "Inspect workspace and session context",
-            description:
-              "Load the current workspace context and PM goal before drafting the first structured brief.",
-            displayOrder: 10,
-          },
-          {
-            taskType: "draft_brief",
-            title: "Draft the initial structured brief",
-            description:
-              "Generate the first structured program brief from the PM instruction and available workspace context.",
-            displayOrder: 20,
-          },
-          {
-            taskType: "validate_output",
-            title: "Validate the brief output",
-            description:
-              "Validate the generated brief shape, confidence, and open-input readiness state.",
-            displayOrder: 30,
-          },
-          {
-            taskType: "update_memory",
-            title: "Persist the brief memory state",
-            description:
-              "Store the brief summary, open questions, workspace stage, and recommended next step.",
-            displayOrder: 40,
-          },
-          {
-            taskType: "emit_recommendation",
-            title: "Recommend the next PM action",
-            description:
-              "Translate the current brief state into the clearest next operator action for the PM.",
-            displayOrder: 50,
-          },
+          { taskType: "inspect_context", title: "Inspect workspace and session context", description: "Load the current workspace context and PM goal before drafting the first structured brief.", displayOrder: 10 },
+          { taskType: "draft_brief", title: "Draft the initial structured brief", description: "Generate the first structured program brief from the PM instruction and available workspace context.", displayOrder: 20 },
+          { taskType: "validate_output", title: "Validate the brief output", description: "Validate the generated brief shape, confidence, and open-input readiness state.", displayOrder: 30 },
+          { taskType: "update_memory", title: "Persist the brief memory state", description: "Store the brief summary, open questions, workspace stage, and recommended next step.", displayOrder: 40 },
+          { taskType: "emit_recommendation", title: "Recommend the next PM action", description: "Translate the current brief state into the clearest next operator action for the PM.", displayOrder: 50 },
         ],
         recommendation,
         shouldGenerateBrief: true,
         shouldGenerateAssets: false,
-        planningSummary:
-          "Inspecting the PM workspace goal and planning the initial brief drafting sequence.",
-        runningSummary:
-          "Drafting the initial structured brief from the PM program goal.",
-        completionSummary:
-          "The initial program brief is drafted and ready for the next PM step.",
-        waitingSummary:
-          "The initial brief is drafted, and Innova is waiting for PM clarification on the remaining inputs.",
+        shouldGeneratePlan: false,
+        shouldPrepareApprovals: false,
+        planningSummary: "Inspecting the PM workspace goal and planning the initial brief drafting sequence.",
+        runningSummary: "Drafting the initial structured brief from the PM program goal.",
+        completionSummary: "The initial program brief is drafted and ready for the next PM step.",
+        waitingSummary: "The initial brief is drafted, and Innova is waiting for PM clarification on the remaining inputs.",
       };
+
     case "answer_open_questions":
       return {
-        intent,
-        stage,
+        intent, stage,
         runType: "brief_revision",
         taskPlan: [
-          {
-            taskType: "inspect_context",
-            title: "Inspect unresolved brief inputs",
-            description:
-              "Load the current brief and unresolved questions before applying the PM answers.",
-            displayOrder: 10,
-          },
-          {
-            taskType: "draft_brief",
-            title: "Apply the PM answers to the brief",
-            description:
-              "Update the structured brief with the newly answered program inputs.",
-            displayOrder: 20,
-          },
-          {
-            taskType: "validate_output",
-            title: "Re-evaluate brief readiness",
-            description:
-              "Validate the updated brief and confirm whether planning can proceed cleanly.",
-            displayOrder: 30,
-          },
-          {
-            taskType: "update_memory",
-            title: "Refresh workspace memory",
-            description:
-              "Update the stored brief summary, open questions, workspace stage, and next-step guidance.",
-            displayOrder: 40,
-          },
-          {
-            taskType: "emit_recommendation",
-            title: "Recommend the next PM action",
-            description:
-              "Recommend the highest-value follow-up after resolving the latest brief inputs.",
-            displayOrder: 50,
-          },
+          { taskType: "inspect_context", title: "Inspect unresolved brief inputs", description: "Load the current brief and unresolved questions before applying the PM answers.", displayOrder: 10 },
+          { taskType: "draft_brief", title: "Apply the PM answers to the brief", description: "Update the structured brief with the newly answered program inputs.", displayOrder: 20 },
+          { taskType: "validate_output", title: "Re-evaluate brief readiness", description: "Validate the updated brief and confirm whether planning can proceed cleanly.", displayOrder: 30 },
+          { taskType: "update_memory", title: "Refresh workspace memory", description: "Update the stored brief summary, open questions, workspace stage, and next-step guidance.", displayOrder: 40 },
+          { taskType: "emit_recommendation", title: "Recommend the next PM action", description: "Recommend the highest-value follow-up after resolving the latest brief inputs.", displayOrder: 50 },
         ],
         recommendation,
         shouldGenerateBrief: true,
         shouldGenerateAssets: false,
-        planningSummary:
-          "Inspecting the unresolved brief inputs and planning the clarification update.",
-        runningSummary:
-          "Resolving the PM answers into the structured brief and reassessing readiness.",
-        completionSummary:
-          "The brief has been updated with the PM answers and the next step is ready.",
-        waitingSummary:
-          "The brief has been updated, and Innova still needs more PM clarification before planning.",
+        shouldGeneratePlan: false,
+        shouldPrepareApprovals: false,
+        planningSummary: "Inspecting the unresolved brief inputs and planning the clarification update.",
+        runningSummary: "Resolving the PM answers into the structured brief and reassessing readiness.",
+        completionSummary: "The brief has been updated with the PM answers and the next step is ready.",
+        waitingSummary: "The brief has been updated, and Innova still needs more PM clarification before planning.",
       };
+
     case "recommend_next_step":
       return {
-        intent,
-        stage,
+        intent, stage,
         runType: "conversation_followup",
         taskPlan: [
-          {
-            taskType: "inspect_context",
-            title: "Inspect current workspace state",
-            description:
-              "Review the active brief, plan, approvals, and blockers before recommending the next PM step.",
-            displayOrder: 10,
-          },
-          {
-            taskType: "emit_recommendation",
-            title: "Recommend the next PM action",
-            description:
-              "Summarize the highest-value next operator action based on the current workspace state.",
-            displayOrder: 20,
-          },
-          {
-            taskType: "update_memory",
-            title: "Persist stage and recommendation memory",
-            description:
-              "Store the current workspace stage and the latest next-step recommendation for follow-up runs.",
-            displayOrder: 30,
-          },
+          { taskType: "inspect_context", title: "Inspect current workspace state", description: "Review the active brief, plan, approvals, and blockers before recommending the next PM step.", displayOrder: 10 },
+          { taskType: "emit_recommendation", title: "Recommend the next PM action", description: "Summarize the highest-value next operator action based on the current workspace state.", displayOrder: 20 },
+          { taskType: "update_memory", title: "Persist stage and recommendation memory", description: "Store the current workspace stage and the latest next-step recommendation for follow-up runs.", displayOrder: 30 },
         ],
         recommendation,
         shouldGenerateBrief: false,
         shouldGenerateAssets: false,
-        planningSummary:
-          "Inspecting the PM workspace state and planning the next-step recommendation.",
-        runningSummary:
-          "Reviewing the current brief state, blockers, and readiness before recommending the next move.",
-        completionSummary:
-          "The PM workspace recommendation is ready and the next governed action is clear.",
-        waitingSummary:
-          "The PM workspace recommendation is ready and waiting for the next operator decision.",
+        shouldGeneratePlan: false,
+        shouldPrepareApprovals: false,
+        planningSummary: "Inspecting the PM workspace state and planning the next-step recommendation.",
+        runningSummary: "Reviewing the current brief state, blockers, and readiness before recommending the next move.",
+        completionSummary: "The PM workspace recommendation is ready and the next governed action is clear.",
+        waitingSummary: "The PM workspace recommendation is ready and waiting for the next operator decision.",
       };
+
     case "generate_launch_assets":
       return {
-        intent,
-        stage,
+        intent, stage,
         runType: "launch_kit_generation",
         taskPlan: [
-          {
-            taskType: "inspect_context",
-            title: "Inspect brief and plan context",
-            description:
-              "Load the current brief, plan, and operator instruction before drafting the requested launch assets.",
-            displayOrder: 10,
-          },
-          {
-            taskType: "draft_asset",
-            title: "Draft governed launch assets",
-            description:
-              "Generate the requested landing page, forms, or judging package as PM-reviewed launch-kit artifacts.",
-            displayOrder: 20,
-          },
-          {
-            taskType: "update_memory",
-            title: "Persist launch-kit memory",
-            description:
-              "Store the latest launch-kit draft state and the next recommended PM action.",
-            displayOrder: 30,
-          },
-          {
-            taskType: "emit_recommendation",
-            title: "Recommend the next PM action",
-            description:
-              "Guide the PM toward asset review, further refinements, or the approval packet.",
-            displayOrder: 40,
-          },
+          { taskType: "inspect_context", title: "Inspect brief and plan context", description: "Load the current brief, plan, and operator instruction before drafting the requested launch assets.", displayOrder: 10 },
+          { taskType: "draft_asset", title: "Draft governed launch assets", description: "Generate the requested landing page, forms, or judging package as PM-reviewed launch-kit artifacts.", displayOrder: 20 },
+          { taskType: "update_memory", title: "Persist launch-kit memory", description: "Store the latest launch-kit draft state and the next recommended PM action.", displayOrder: 30 },
+          { taskType: "emit_recommendation", title: "Recommend the next PM action", description: "Guide the PM toward asset review, further refinements, or the approval packet.", displayOrder: 40 },
         ],
         recommendation: {
           title: "Review the generated launch assets",
-          body:
-            "The next best step is to review the generated launch-kit assets, refine anything that needs adjustment, and then move into the governed approval packet.",
+          body: "The next best step is to review the generated launch-kit assets, refine anything that needs adjustment, and then move into the governed approval packet.",
           primaryActionLabel: "Review assets",
           stageLabel: "Assets generated",
           stageTone: "green",
@@ -395,69 +354,92 @@ export function planPmWorkspaceRun(input: PmPlannerInput): PmPlannerDecision {
         },
         shouldGenerateBrief: false,
         shouldGenerateAssets: true,
-        planningSummary:
-          "Inspecting the current brief and plan before drafting the requested launch-kit assets.",
-        runningSummary:
-          "Drafting the requested landing page, forms, and judging setup for PM review.",
-        completionSummary:
-          "The requested launch-kit assets are ready for PM review and downstream approvals.",
-        waitingSummary:
-          "The asset drafts are ready, and Innova is waiting for PM review or follow-up edits.",
+        shouldGeneratePlan: false,
+        shouldPrepareApprovals: false,
+        planningSummary: "Inspecting the current brief and plan before drafting the requested launch-kit assets.",
+        runningSummary: "Drafting the requested landing page, forms, and judging setup for PM review.",
+        completionSummary: "The requested launch-kit assets are ready for PM review and downstream approvals.",
+        waitingSummary: "The asset drafts are ready, and Innova is waiting for PM review or follow-up edits.",
       };
+
+    case "generate_plan":
+      return {
+        intent, stage,
+        runType: "plan_generation",
+        taskPlan: [
+          { taskType: "inspect_context", title: "Inspect the brief and workspace context", description: "Load the current brief, assumptions, and open questions before drafting the plan.", displayOrder: 10 },
+          { taskType: "draft_plan", title: "Draft the governed execution plan", description: "Generate the execution plan from the current brief and workspace context.", displayOrder: 20 },
+          { taskType: "validate_output", title: "Validate the generated plan", description: "Validate the plan structure, approval gates, and execution readiness.", displayOrder: 30 },
+          { taskType: "update_memory", title: "Persist planning memory", description: "Store the plan summary and approval requirements for later runs.", displayOrder: 40 },
+          { taskType: "emit_recommendation", title: "Recommend the next PM action", description: "Guide the PM toward asset generation or the approval packet.", displayOrder: 50 },
+        ],
+        recommendation: {
+          title: "Review the execution plan",
+          body: "The execution plan is ready. Review the milestones and approval gates, then generate the launch-kit assets or move straight to the approval packet.",
+          primaryActionLabel: "Review plan",
+          stageLabel: "Plan ready",
+          stageTone: "green",
+          blockingOpenInputCount: 0,
+        },
+        shouldGenerateBrief: false,
+        shouldGenerateAssets: false,
+        shouldGeneratePlan: true,
+        shouldPrepareApprovals: false,
+        planningSummary: "Reviewing the structured brief before generating the execution plan.",
+        runningSummary: "Generating the execution plan from the current brief.",
+        completionSummary: "The execution plan is ready for review.",
+        waitingSummary: "The plan is ready and waiting for PM review.",
+      };
+
+    case "prepare_approvals":
+      return {
+        intent, stage,
+        runType: "approval_preparation",
+        taskPlan: [
+          { taskType: "inspect_context", title: "Inspect the plan and approval requirements", description: "Load the current plan and identify which items require governed approval.", displayOrder: 10 },
+          { taskType: "prepare_approval_checkpoint", title: "Prepare the approval packet", description: "Create the governed approval packet with all approval-gated plan items.", displayOrder: 20 },
+          { taskType: "update_memory", title: "Persist approval state memory", description: "Store the approval packet state and next-step guidance for follow-up runs.", displayOrder: 30 },
+          { taskType: "emit_recommendation", title: "Recommend the next PM action", description: "Guide the PM to review and approve the packet before execution.", displayOrder: 40 },
+        ],
+        recommendation: {
+          title: "Review and approve the packet",
+          body: "The approval packet is ready for your review. Approve to proceed with deterministic execution of the program foundation.",
+          primaryActionLabel: "Review approvals",
+          stageLabel: "Ready to review",
+          stageTone: "gold",
+          blockingOpenInputCount: 0,
+        },
+        shouldGenerateBrief: false,
+        shouldGenerateAssets: false,
+        shouldGeneratePlan: false,
+        shouldPrepareApprovals: true,
+        planningSummary: "Inspecting the plan and identifying approval-gated items.",
+        runningSummary: "Preparing the governed approval packet from the current plan.",
+        completionSummary: "The approval packet is ready for PM review and decision.",
+        waitingSummary: "The approval packet is ready and waiting for the PM to review and approve.",
+      };
+
     case "refine_brief":
     default:
       return {
-        intent,
-        stage,
+        intent, stage,
         runType: "brief_revision",
         taskPlan: [
-          {
-            taskType: "inspect_context",
-            title: "Inspect the current brief context",
-            description:
-              "Load the current brief, conversation, and latest PM instruction before revising the draft.",
-            displayOrder: 10,
-          },
-          {
-            taskType: "draft_brief",
-            title: "Revise the structured brief",
-            description:
-              "Apply the latest PM refinement to the structured brief and preserve the governed workspace state.",
-            displayOrder: 20,
-          },
-          {
-            taskType: "validate_output",
-            title: "Validate the revised brief",
-            description:
-              "Validate the revised brief shape, confidence, and readiness for the next stage.",
-            displayOrder: 30,
-          },
-          {
-            taskType: "update_memory",
-            title: "Refresh workspace memory",
-            description:
-              "Persist the revised brief summary, open questions, workspace stage, and recommended next step.",
-            displayOrder: 40,
-          },
-          {
-            taskType: "emit_recommendation",
-            title: "Recommend the next PM action",
-            description:
-              "Translate the revised brief state into the clearest next action for the PM.",
-            displayOrder: 50,
-          },
+          { taskType: "inspect_context", title: "Inspect the current brief context", description: "Load the current brief, conversation, and latest PM instruction before revising the draft.", displayOrder: 10 },
+          { taskType: "draft_brief", title: "Revise the structured brief", description: "Apply the latest PM refinement to the structured brief and preserve the governed workspace state.", displayOrder: 20 },
+          { taskType: "validate_output", title: "Validate the revised brief", description: "Validate the revised brief shape, confidence, and readiness for the next stage.", displayOrder: 30 },
+          { taskType: "update_memory", title: "Refresh workspace memory", description: "Persist the revised brief summary, open questions, workspace stage, and recommended next step.", displayOrder: 40 },
+          { taskType: "emit_recommendation", title: "Recommend the next PM action", description: "Translate the revised brief state into the clearest next action for the PM.", displayOrder: 50 },
         ],
         recommendation,
         shouldGenerateBrief: true,
         shouldGenerateAssets: false,
-        planningSummary:
-          "Inspecting the current brief and planning the latest PM refinement.",
-        runningSummary:
-          "Applying the latest PM refinement to the structured brief.",
-        completionSummary:
-          "The brief refinement is complete and the next PM step is ready.",
-        waitingSummary:
-          "The brief refinement is complete, and Innova still needs clarification before planning.",
+        shouldGeneratePlan: false,
+        shouldPrepareApprovals: false,
+        planningSummary: "Inspecting the current brief and planning the latest PM refinement.",
+        runningSummary: "Applying the latest PM refinement to the structured brief.",
+        completionSummary: "The brief refinement is complete and the next PM step is ready.",
+        waitingSummary: "The brief refinement is complete, and Innova still needs clarification before planning.",
       };
   }
 }

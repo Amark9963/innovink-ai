@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { OnboardingForm } from "@/app/app/onboarding/onboarding-form";
-import { OperatingDefaultsForm } from "@/app/app/onboarding/operating-defaults-form";
 import { SetupShell } from "@/components/enterprise/setup-shell";
 import { getCurrentUserOrNull, getInitialOnboardingState } from "@/lib/supabase/queries";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -16,88 +15,53 @@ export default async function OnboardingPage() {
   const onboarding = await getInitialOnboardingState(supabase, user);
 
   if (onboarding.isComplete) {
-    redirect("/app/dashboard");
+    redirect("/app/create");
   }
-
-  const isDefaultsStep = onboarding.hasWorkspaceAccess;
 
   return (
     <SetupShell
-      title={
-        isDefaultsStep
-          ? "Set your workspace operating defaults"
-          : "Create your initial governed workspace"
-      }
-      description={
-        isDefaultsStep
-          ? "Define the starting defaults that shape templates, governance behavior, and participant setup for your first Innovink workspace."
-          : "Set up the first organization and workspace that will anchor Innovink tenant access, role-aware operator surfaces, and the AI-led program workflow."
-      }
-      progressLabel={isDefaultsStep ? "Step 2 of 2" : "Step 1 of 2"}
-      steps={[
-        {
-          label: "Workspace Foundation",
-          description: "Create the tenant, owner scope, and first workspace",
-          status: isDefaultsStep ? "done" : "active",
-        },
-        {
-          label: "Operating Defaults",
-          description: "Set default timezone, program types, and governance behavior",
-          status: isDefaultsStep ? "active" : "pending",
-        },
-      ]}
+      title="Create your Innovink workspace"
+      description="Set up your organization and workspace in one step. Innova will guide your first program from here."
       preview={
         <div className="space-y-3">
-          <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-[#5e7088]">
-            {isDefaultsStep ? "Defaults Preview" : "Workspace Preview"}
+          <div className="mb-4 text-[9px] font-bold uppercase tracking-[.14em] text-[var(--ws-gold-bright)]">
+            What unlocks next
           </div>
 
-          <div className="rounded-xl border border-white/7 bg-[#162034] p-4">
-            <div className="mb-2 text-[12px] font-semibold text-[#eae5dc]">
-              {isDefaultsStep ? "Saved foundation" : "Governance foundation"}
+          <div className="rounded-[var(--ws-r-xl)] border border-[color:var(--ws-b-subtle)] bg-[var(--ws-bg-card)] px-4 py-4">
+            <div className="mb-1.5 text-[12px] font-semibold text-[var(--ws-t-primary)]">
+              AI Workspace
             </div>
-            <div className="text-[11px] leading-5 text-[#9baabf]">
-              {isDefaultsStep
-                ? `Workspace ${onboarding.primaryWorkspace?.workspaceName ?? "foundation"} is ready. This step adds the defaults that guide template selection and governance behavior.`
-                : "This step creates the organization, owner membership, workspace, and active workspace-admin membership in one trusted transaction."}
+            <div className="text-[11px] leading-5 text-[var(--ws-t-secondary)]">
+              Your primary home. Describe any program in natural language — Innova structures the brief, plan, and approval flow.
             </div>
           </div>
 
-          <div className="rounded-xl border border-white/7 bg-[#162034] p-4">
-            <div className="mb-2 text-[12px] font-semibold text-[#eae5dc]">
-              {isDefaultsStep ? "What these defaults shape" : "What unlocks next"}
+          <div className="rounded-[var(--ws-r-xl)] border border-[color:var(--ws-b-subtle)] bg-[var(--ws-bg-card)] px-4 py-4">
+            <div className="mb-1.5 text-[12px] font-semibold text-[var(--ws-t-primary)]">
+              Governed execution
             </div>
-            <div className="space-y-1.5 text-[11.5px] text-[#9baabf]">
-              {isDefaultsStep ? (
-                <>
-                  <div>&bull; Default program templates</div>
-                  <div>&bull; Participant registration behavior</div>
-                  <div>&bull; Publish approval expectations</div>
-                </>
-              ) : (
-                <>
-                  <div>&bull; PM dashboard and operator shell</div>
-                  <div>&bull; AI program workspace</div>
-                  <div>&bull; Template-aware program creation</div>
-                </>
-              )}
+            <div className="text-[11px] leading-5 text-[var(--ws-t-secondary)]">
+              AI drafts and recommends. You approve. Deterministic backend services execute — nothing goes live without your sign-off.
             </div>
           </div>
 
-          <div className="rounded-xl border border-white/7 bg-[#162034] p-4">
-            <div className="mb-2 text-[12px] font-semibold text-[#eae5dc]">
-              {isDefaultsStep ? "After this step" : "Operator access"}
+          <div className="rounded-[var(--ws-r-xl)] border border-[color:var(--ws-b-subtle)] bg-[var(--ws-bg-card)] px-4 py-4">
+            <div className="mb-1.5 text-[12px] font-semibold text-[var(--ws-t-primary)]">
+              Full lifecycle in one place
             </div>
-            <div className="text-[11px] leading-5 text-[#9baabf]">
-              {isDefaultsStep
-                ? "Innovink will route you into the PM dashboard with the tenant foundation and operating defaults both in place."
-                : "Supabase Auth is already active. Once this workspace exists, operators continue into the default-governance step before the PM dashboard opens."}
+            <div className="text-[11px] leading-5 text-[var(--ws-t-secondary)]">
+              From first brief to live program — registration, judging, communications, and reporting — all from one operating surface.
             </div>
           </div>
+
+          <p className="pt-2 text-[10.5px] text-[var(--ws-t-muted)]">
+            Timezone, program types, and governance settings can all be adjusted later in workspace settings.
+          </p>
         </div>
       }
     >
-      {isDefaultsStep ? <OperatingDefaultsForm /> : <OnboardingForm />}
+      <OnboardingForm />
     </SetupShell>
   );
 }

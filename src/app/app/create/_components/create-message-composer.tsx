@@ -1,21 +1,26 @@
 "use client";
 
+import type { MutableRefObject } from "react";
 import { useRef, useState } from "react";
 
 export function CreateMessageComposer({
   workspaceId,
   sessionId,
   defaultMessage,
+  placeholder,
   showHelperText = true,
   onOptimisticSubmit,
   onStreamEvent,
+  clientMessageIdRef,
 }: {
   workspaceId: string;
   sessionId?: string | null;
   defaultMessage?: string;
+  placeholder?: string;
   showHelperText?: boolean;
-  onOptimisticSubmit?: (message: string) => void;
+  onOptimisticSubmit?: (message: string, clientMessageId: string) => void;
   onStreamEvent?: (event: StreamEvent) => void;
+  clientMessageIdRef?: MutableRefObject<string | null>;
 }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -30,12 +35,19 @@ export function CreateMessageComposer({
         }
 
         const message = textareaRef.current?.value?.trim();
-        if (!message || message.length < 8) {
+        if (!message || message.length < 1) {
           return;
         }
 
         setIsSubmitting(true);
-        onOptimisticSubmit?.(message);
+        const clientMessageId = createClientMessageId();
+        if (clientMessageIdRef) {
+          clientMessageIdRef.current = clientMessageId;
+        }
+        onOptimisticSubmit?.(message, clientMessageId);
+        if (textareaRef.current) {
+          textareaRef.current.value = "";
+        }
 
         try {
           const response = await fetch("/api/pm-workspace/chat", {
@@ -47,11 +59,12 @@ export function CreateMessageComposer({
               workspaceId,
               sessionId,
               message,
+              clientMessageId,
             }),
           });
 
           if (!response.ok || !response.body) {
-            throw new Error("The PM workspace could not open a live stream.");
+            throw new Error("Something went wrong. Please try again.");
           }
 
           const reader = response.body.getReader();
@@ -75,22 +88,23 @@ export function CreateMessageComposer({
               onStreamEvent?.(JSON.parse(line) as StreamEvent);
             }
           }
-
-          textareaRef.current!.value = "";
         } catch (error) {
           onStreamEvent?.({
             type: "error",
             message:
               error instanceof Error
                 ? error.message
-                : "The PM workspace could not send that instruction.",
+                : "Something went wrong. Please try again.",
           });
         } finally {
+          if (clientMessageIdRef?.current === clientMessageId) {
+            clientMessageIdRef.current = null;
+          }
           setIsSubmitting(false);
         }
       }}
     >
-      <div className="rounded-[22px] border border-white/8 bg-[#0b1423] px-4 py-3 shadow-[0_-8px_24px_rgba(2,6,14,0.08)]">
+      <div className="rounded-[var(--ws-r-xl)] border border-[color:var(--ws-b-default)] bg-[var(--ws-bg-input)] px-4 py-3 shadow-[0_-8px_24px_rgba(2,6,14,0.08)] focus-within:border-[color:var(--ws-gold-bdr)] focus-within:shadow-[0_0_0_3px_var(--ws-gold-glow)] transition-all">
         <div className="flex items-end gap-2">
           <textarea
             ref={textareaRef}
@@ -98,20 +112,34 @@ export function CreateMessageComposer({
             name="message"
             defaultValue={defaultMessage ?? ""}
             required
-            minLength={8}
+            minLength={1}
             rows={1}
-            placeholder="Describe the program you want to build - type, scope, timeline, requirements..."
-            className="min-h-[22px] max-h-[112px] flex-1 resize-none bg-transparent text-[14px] leading-7 text-[#eae5dc] outline-none placeholder:text-[#607089]"
+            placeholder={placeholder ?? "Describe the program you want to build…"}
+            className="min-h-[22px] max-h-[112px] flex-1 resize-none bg-transparent text-[14px] leading-[1.55] text-[var(--ws-t-primary)] outline-none placeholder:text-[var(--ws-t-muted)]"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey && !isSubmitting) {
+                e.preventDefault();
+                e.currentTarget.form?.requestSubmit();
+              }
+            }}
           />
           <ComposerActions isSubmitting={isSubmitting} />
         </div>
-        <div className="mt-2 flex items-center justify-between gap-3 px-1 text-[10.5px] text-[#5e7088]">
+        <div className="mt-2 flex items-center justify-between gap-3 px-1 text-[10.5px] text-[var(--ws-t-tertiary)]">
           <span>{showHelperText ? "Innova structures your input into a governed brief, plan, and approval flow." : ""}</span>
-          <span className="shrink-0">{isSubmitting ? "Sending..." : "Enter to send"}</span>
+          <span className="shrink-0">Enter to send</span>
         </div>
       </div>
     </form>
   );
+}
+
+function createClientMessageId() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+
+  return `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 function ComposerActions({ isSubmitting }: { isSubmitting: boolean }) {
@@ -122,14 +150,14 @@ function ComposerActions({ isSubmitting }: { isSubmitting: boolean }) {
       <button
         type="button"
         disabled={busy}
-        className="flex h-8 w-8 items-center justify-center rounded-lg text-[#5e7088] transition hover:bg-white/[0.03] hover:text-[#9baabf] disabled:cursor-not-allowed disabled:opacity-40"
+        className="flex h-8 w-8 items-center justify-center rounded-[var(--ws-r-md)] text-[var(--ws-t-tertiary)] transition hover:bg-[var(--ws-b-faint)] hover:text-[var(--ws-t-secondary)] disabled:cursor-not-allowed disabled:opacity-40"
       >
         <PaperclipIcon />
       </button>
       <button
         type="submit"
         disabled={busy}
-        className="flex h-9 min-w-[92px] items-center justify-center gap-2 rounded-full bg-[#b08a28] px-3.5 text-[11.5px] font-semibold text-[#06100f] transition hover:bg-[#ccaa4a] disabled:cursor-not-allowed disabled:opacity-70"
+        className="flex h-9 min-w-[92px] items-center justify-center gap-2 rounded-full bg-[var(--ws-gold)] px-3.5 text-[11.5px] font-semibold text-[#06100f] transition hover:bg-[var(--ws-gold-bright)] disabled:cursor-not-allowed disabled:opacity-70"
       >
         {busy ? (
           <>
@@ -173,6 +201,12 @@ export type StreamEvent =
       message: string;
       sessionId?: string;
       workspaceId?: string;
+    }
+  | {
+      type: "build_step";
+      step: string;
+      status: "running" | "done";
+      label: string;
     };
 
 function PaperclipIcon() {

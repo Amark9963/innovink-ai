@@ -2,156 +2,185 @@
 
 import { useActionState, useState } from "react";
 import {
-  createWorkspaceOnboarding,
+  createWorkspaceWithDefaults,
   type OnboardingActionState,
 } from "@/app/app/onboarding/actions";
 import { slugifySegment } from "@/lib/utils/slugs";
 
-const INITIAL_STATE: OnboardingActionState = {
-  error: null,
-};
+const INITIAL_STATE: OnboardingActionState = { error: null };
+
+const TIMEZONE_OPTIONS = [
+  { value: "Asia/Singapore", label: "Singapore (GMT+8)" },
+  { value: "Asia/Tokyo", label: "Tokyo (GMT+9)" },
+  { value: "Asia/Kolkata", label: "India (GMT+5:30)" },
+  { value: "Asia/Dubai", label: "Dubai (GMT+4)" },
+  { value: "Europe/London", label: "London (GMT+0/+1)" },
+  { value: "Europe/Paris", label: "Paris (GMT+1/+2)" },
+  { value: "America/New_York", label: "New York (GMT-5/-4)" },
+  { value: "America/Chicago", label: "Chicago (GMT-6/-5)" },
+  { value: "America/Los_Angeles", label: "Los Angeles (GMT-8/-7)" },
+  { value: "America/Sao_Paulo", label: "São Paulo (GMT-3)" },
+  { value: "Australia/Sydney", label: "Sydney (GMT+10/+11)" },
+] as const;
+
+const PROGRAM_TYPES = [
+  { value: "hackathon", label: "Hackathon" },
+  { value: "innovation_challenge", label: "Innovation Challenge" },
+  { value: "accelerator", label: "Accelerator" },
+  { value: "grant_program", label: "Grant Program" },
+  { value: "student_competition", label: "Student Competition" },
+  { value: "pitch_competition", label: "Pitch Competition" },
+] as const;
 
 export function OnboardingForm() {
   const [state, formAction, isPending] = useActionState(
-    createWorkspaceOnboarding,
+    createWorkspaceWithDefaults,
     INITIAL_STATE,
   );
-  const [organizationName, setOrganizationName] = useState("");
+
+  const [orgName, setOrgName] = useState("");
   const [workspaceName, setWorkspaceName] = useState("");
-  const [organizationSlug, setOrganizationSlug] = useState("");
-  const [workspaceSlug, setWorkspaceSlug] = useState("");
+  const [workspaceNameTouched, setWorkspaceNameTouched] = useState(false);
+  const [selectedTypes, setSelectedTypes] = useState<string[]>(["hackathon", "innovation_challenge"]);
+
+  function toggleType(value: string) {
+    setSelectedTypes((current) =>
+      current.includes(value)
+        ? current.length > 1 ? current.filter((t) => t !== value) : current
+        : [...current, value],
+    );
+  }
 
   return (
-    <section className="max-w-4xl rounded-[18px] border border-white/7 bg-[#162034] p-6 shadow-[0_8px_28px_rgba(0,0,0,0.55)] md:p-7">
-      <form action={formAction} className="space-y-6">
-        <div className="rounded-xl border border-[#b08a2838] bg-[#b08a2810] px-4 py-3 text-[12px] leading-5 text-[#cbb890]">
-          This creates your first organization, workspace, and owner-level membership in one audited setup step.
-        </div>
+    <form action={formAction} className="space-y-5">
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-2">
-            <label
-              htmlFor="organizationName"
-              className="text-[11px] font-medium uppercase tracking-[0.06em] text-[#9baabf]"
-            >
-              Organization name
-            </label>
-            <input
-              id="organizationName"
-              name="organizationName"
-              value={organizationName}
-              onChange={(event) => {
-                const nextValue = event.target.value;
-                setOrganizationName(nextValue);
-
-                if (!organizationSlug || organizationSlug === slugifySegment(organizationName)) {
-                  setOrganizationSlug(slugifySegment(nextValue));
-                }
-              }}
-              required
-              className="w-full rounded-md border border-white/10 bg-[#0a1422] px-4 py-3 text-sm text-[#eae5dc] outline-none transition placeholder:text-[#5e7088] focus:border-[#b08a28]"
-              placeholder="Acme Innovation Group"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label
-              htmlFor="organizationSlug"
-              className="text-[11px] font-medium uppercase tracking-[0.06em] text-[#9baabf]"
-            >
-              Organization slug
-            </label>
-            <input
-              id="organizationSlug"
-              name="organizationSlug"
-              value={organizationSlug}
-              onChange={(event) => setOrganizationSlug(event.target.value)}
-              className="w-full rounded-md border border-white/10 bg-[#0a1422] px-4 py-3 text-sm text-[#eae5dc] outline-none transition placeholder:text-[#5e7088] focus:border-[#b08a28]"
-              placeholder="acme-innovation-group"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label
-              htmlFor="workspaceName"
-              className="text-[11px] font-medium uppercase tracking-[0.06em] text-[#9baabf]"
-            >
-              Workspace name
-            </label>
-            <input
-              id="workspaceName"
-              name="workspaceName"
-              value={workspaceName}
-              onChange={(event) => {
-                const nextValue = event.target.value;
-                setWorkspaceName(nextValue);
-
-                if (!workspaceSlug || workspaceSlug === slugifySegment(workspaceName)) {
-                  setWorkspaceSlug(slugifySegment(nextValue));
-                }
-              }}
-              required
-              className="w-full rounded-md border border-white/10 bg-[#0a1422] px-4 py-3 text-sm text-[#eae5dc] outline-none transition placeholder:text-[#5e7088] focus:border-[#b08a28]"
-              placeholder="Global Programs"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label
-              htmlFor="workspaceSlug"
-              className="text-[11px] font-medium uppercase tracking-[0.06em] text-[#9baabf]"
-            >
-              Workspace slug
-            </label>
-            <input
-              id="workspaceSlug"
-              name="workspaceSlug"
-              value={workspaceSlug}
-              onChange={(event) => setWorkspaceSlug(event.target.value)}
-              className="w-full rounded-md border border-white/10 bg-[#0a1422] px-4 py-3 text-sm text-[#eae5dc] outline-none transition placeholder:text-[#5e7088] focus:border-[#b08a28]"
-              placeholder="global-programs"
-            />
-          </div>
-        </div>
-
-        <div className="space-y-2">
+      {/* Org + workspace names */}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5">
           <label
-            htmlFor="billingEmail"
-            className="text-[11px] font-medium uppercase tracking-[0.06em] text-[#9baabf]"
+            htmlFor="organizationName"
+            className="block text-[10.5px] font-semibold uppercase tracking-[.08em] text-[var(--ws-t-muted)]"
           >
-            Billing email
+            Organization name
           </label>
           <input
-            id="billingEmail"
-            name="billingEmail"
-            type="email"
-            className="w-full rounded-md border border-white/10 bg-[#0a1422] px-4 py-3 text-sm text-[#eae5dc] outline-none transition placeholder:text-[#5e7088] focus:border-[#b08a28]"
-            placeholder="finance@company.com"
+            id="organizationName"
+            name="organizationName"
+            value={orgName}
+            onChange={(e) => {
+              const next = e.target.value;
+              setOrgName(next);
+              if (!workspaceNameTouched) {
+                setWorkspaceName(next);
+              }
+            }}
+            required
+            autoFocus
+            placeholder="Acme Innovation"
+            className="w-full rounded-[var(--ws-r-md)] border border-[color:var(--ws-b-default)] bg-[var(--ws-bg-input)] px-3.5 py-2.5 text-[13px] text-[var(--ws-t-primary)] outline-none transition placeholder:text-[var(--ws-t-muted)] focus:border-[color:var(--ws-gold-bdr)] focus:shadow-[0_0_0_3px_var(--ws-gold-glow)]"
           />
         </div>
 
-        {state.error ? (
-          <p className="rounded-md border border-[#9b3a3a66] bg-[#9b3a3a1a] px-4 py-3 text-sm text-[#f1bcbc]">
-            {state.error}
-          </p>
-        ) : null}
-
-        <div className="flex items-center justify-between border-t border-white/7 pt-5">
-          <div className="text-[12px] text-[#5e7088]">
-            Initial tenant creation is audited and role-aware from the first record.
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-[12px] text-[#9baabf]">Initial setup</span>
-            <button
-              type="submit"
-              disabled={isPending}
-              className="rounded-md bg-[#b08a28] px-5 py-3 text-sm font-semibold text-[#06100f] transition hover:bg-[#ccaa4a] disabled:cursor-not-allowed disabled:opacity-70"
-            >
-              {isPending ? "Creating workspace..." : "Launch workspace ->"}
-            </button>
-          </div>
+        <div className="space-y-1.5">
+          <label
+            htmlFor="workspaceName"
+            className="block text-[10.5px] font-semibold uppercase tracking-[.08em] text-[var(--ws-t-muted)]"
+          >
+            Workspace name
+          </label>
+          <input
+            id="workspaceName"
+            name="workspaceName"
+            value={workspaceName}
+            onChange={(e) => {
+              setWorkspaceName(e.target.value);
+              setWorkspaceNameTouched(true);
+            }}
+            required
+            placeholder="Global Programs"
+            className="w-full rounded-[var(--ws-r-md)] border border-[color:var(--ws-b-default)] bg-[var(--ws-bg-input)] px-3.5 py-2.5 text-[13px] text-[var(--ws-t-primary)] outline-none transition placeholder:text-[var(--ws-t-muted)] focus:border-[color:var(--ws-gold-bdr)] focus:shadow-[0_0_0_3px_var(--ws-gold-glow)]"
+          />
+          {(orgName || workspaceName) && (
+            <p className="text-[10.5px] text-[var(--ws-t-muted)]">
+              URL: <span className="font-mono text-[var(--ws-t-tertiary)]">/{slugifySegment(workspaceName || orgName)}</span>
+            </p>
+          )}
         </div>
-      </form>
-    </section>
+      </div>
+
+      {/* Timezone */}
+      <div className="space-y-1.5">
+        <label
+          htmlFor="timezone"
+          className="block text-[10.5px] font-semibold uppercase tracking-[.08em] text-[var(--ws-t-muted)]"
+        >
+          Default timezone
+        </label>
+        <select
+          id="timezone"
+          name="timezone"
+          defaultValue="Asia/Singapore"
+          className="w-full rounded-[var(--ws-r-md)] border border-[color:var(--ws-b-default)] bg-[var(--ws-bg-input)] px-3.5 py-2.5 text-[13px] text-[var(--ws-t-primary)] outline-none transition focus:border-[color:var(--ws-gold-bdr)] focus:shadow-[0_0_0_3px_var(--ws-gold-glow)]"
+        >
+          {TIMEZONE_OPTIONS.map((tz) => (
+            <option key={tz.value} value={tz.value}>
+              {tz.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Program types */}
+      <div className="space-y-2">
+        <div className="text-[10.5px] font-semibold uppercase tracking-[.08em] text-[var(--ws-t-muted)]">
+          Program focus <span className="ml-1 normal-case tracking-normal font-normal text-[var(--ws-t-muted)]">— select all that apply</span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {PROGRAM_TYPES.map((type) => {
+            const active = selectedTypes.includes(type.value);
+            return (
+              <button
+                key={type.value}
+                type="button"
+                onClick={() => toggleType(type.value)}
+                className={`rounded-[var(--ws-r-md)] border px-3 py-1.5 text-[11.5px] font-medium transition ${
+                  active
+                    ? "border-[color:var(--ws-gold-bdr)] bg-[var(--ws-gold-sub)] text-[var(--ws-gold-bright)]"
+                    : "border-[color:var(--ws-b-default)] bg-transparent text-[var(--ws-t-muted)] hover:border-[color:var(--ws-b-strong)] hover:text-[var(--ws-t-secondary)]"
+                }`}
+              >
+                {type.label}
+              </button>
+            );
+          })}
+        </div>
+        {/* Hidden inputs for selected types */}
+        {selectedTypes.map((t) => (
+          <input key={t} type="hidden" name="programTypes" value={t} />
+        ))}
+      </div>
+
+      {/* Error */}
+      {state.error ? (
+        <p className="rounded-[var(--ws-r-md)] border border-[color:var(--ws-red-bdr)] bg-[var(--ws-red-sub)] px-4 py-3 text-[12.5px] text-[var(--ws-red-bright)]">
+          {state.error}
+        </p>
+      ) : null}
+
+      {/* Submit */}
+      <div className="flex items-center justify-between border-t border-[color:var(--ws-b-subtle)] pt-4">
+        <p className="text-[11px] text-[var(--ws-t-muted)]">
+          Settings can be adjusted anytime in workspace settings.
+        </p>
+        <button
+          type="submit"
+          disabled={isPending || !orgName.trim() || !workspaceName.trim()}
+          className="rounded-[var(--ws-r-md)] bg-[var(--ws-gold)] px-5 py-2.5 text-[12.5px] font-semibold text-[#06100f] transition hover:bg-[var(--ws-gold-bright)] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {isPending ? "Setting up workspace…" : "Launch workspace →"}
+        </button>
+      </div>
+
+    </form>
   );
 }

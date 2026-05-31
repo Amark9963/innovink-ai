@@ -1,10 +1,7 @@
 import Link from "next/link";
 import { OperatorShell } from "@/components/enterprise/operator-shell";
 import { ApprovalsReviewWorkspace } from "@/app/app/create/_components/approvals-review-workspace";
-import {
-  SessionTabs,
-  buildWorkspaceHref,
-} from "@/app/app/create/_components/session-screen-primitives";
+import { buildWorkspaceHref } from "@/app/app/create/_components/session-screen-primitives";
 import { loadSessionScreenData } from "@/app/app/create/_lib/load-session-screen-data";
 import { getApprovalRequestItems } from "@/lib/supabase/queries";
 
@@ -44,16 +41,14 @@ export default async function ApprovalsPage({ params, searchParams }: ApprovalsP
       headerActions={
         <Link
           href={buildWorkspaceHref(sessionId, "approvals")}
-          className="rounded-md border border-white/10 px-3 py-1.5 text-[11.5px] font-medium text-[#9baabf] transition hover:bg-white/[0.04] hover:text-[#eae5dc]"
+          className="rounded-md border border-[rgba(255,255,255,0.10)] px-3 py-1.5 text-[11.5px] font-medium text-[#9baabf] transition hover:bg-white/[0.04] hover:text-[#eae5dc]"
         >
           Back to AI Workspace
         </Link>
       }
       workspacePrimaryMode
     >
-      <div className="flex h-full flex-col bg-[#07101f]">
-        <SessionTabs sessionId={sessionId} active="approvals" data={data} />
-
+      <div className="pm-workspace-theme flex h-full flex-col bg-[var(--ws-bg-base)]">
         {data.approvals.length > 0 ? (
           <ApprovalsReviewWorkspace
             sessionId={sessionId}
@@ -68,7 +63,7 @@ export default async function ApprovalsPage({ params, searchParams }: ApprovalsP
           />
         ) : (
           <div className="px-6 py-6">
-            <div className="rounded-lg border border-dashed border-white/10 bg-[#162034] px-4 py-4 text-[12px] leading-6 text-[#9baabf]">
+            <div className="rounded-[var(--ws-r-lg)] border border-dashed border-[color:var(--ws-b-default)] bg-[var(--ws-bg-card)] px-4 py-4 text-[12px] leading-6 text-[var(--ws-t-secondary)]">
               No approval packet is available yet. Generate the plan and prepare the approval packet first.
             </div>
           </div>

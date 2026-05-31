@@ -191,7 +191,7 @@ serve(async (request) => {
       return jsonResponse({ error: "OpenAI returned no structured output." }, 502);
     }
 
-    const draft = JSON.parse(outputText) as LandingPageDraft;
+    const draft = normalizeLandingPageDraft(JSON.parse(outputText), program);
     validateLandingPageDraft(draft);
 
     const sectionRows = draft.sections.map((section) => ({
@@ -300,6 +300,103 @@ function validateLandingPageDraft(draft: LandingPageDraft) {
   if (!Array.isArray(draft.sections) || draft.sections.length === 0) {
     throw new Error("Landing page draft did not include any sections.");
   }
+}
+
+function normalizeLandingPageDraft(value: unknown, program: Record<string, unknown>): LandingPageDraft {
+  const source = isRecord(value) ? value : {};
+  const programName = readString(program.name, "Program landing page");
+  const programSummary = readString(
+    program.short_description,
+    "Review the program details, eligibility, timeline, and registration steps.",
+  );
+  const sections = normalizeSections(source.sections, programName, programSummary);
+
+  return {
+    title: readString(source.title, programName),
+    seoTitle: readString(source.seoTitle, programName),
+    seoDescription: readString(source.seoDescription, programSummary),
+    themeKey: readString(source.themeKey, "enterprise-navy"),
+    theme: normalizeTheme(source.theme),
+    sections,
+  };
+}
+
+function normalizeSections(value: unknown, programName: string, programSummary: string) {
+  const source = Array.isArray(value) ? value : [];
+  const byKey = new Map<string, SectionDraft>();
+
+  for (const section of source) {
+    if (!isRecord(section)) continue;
+    const sectionKey = readSectionKey(section.sectionKey);
+    if (!sectionKey) continue;
+    byKey.set(sectionKey, {
+      sectionKey,
+      displayOrder: readInteger(section.displayOrder, byKey.size + 1),
+      isEnabled: typeof section.isEnabled === "boolean" ? section.isEnabled : true,
+      content: isRecord(section.content) ? section.content : {},
+    });
+  }
+
+  const fallbackSections: SectionDraft[] = [
+    {
+      sectionKey: "hero",
+      displayOrder: 1,
+      isEnabled: true,
+      content: {
+        headline: programName,
+        subheadline: programSummary,
+        primaryCta: "Register interest",
+        secondaryCta: "Learn more",
+      },
+    },
+    {
+      sectionKey: "overview",
+      displayOrder: 2,
+      isEnabled: true,
+      content: { headline: "Program overview", body: programSummary },
+    },
+    {
+      sectionKey: "timeline",
+      displayOrder: 3,
+      isEnabled: true,
+      content: { headline: "Timeline", body: "Key dates will be confirmed by the program team." },
+    },
+    {
+      sectionKey: "cta",
+      displayOrder: 4,
+      isEnabled: true,
+      content: { headline: "Ready to participate?", ctaLabel: "Register interest" },
+    },
+  ];
+
+  for (const section of fallbackSections) {
+    if (!byKey.has(section.sectionKey)) {
+      byKey.set(section.sectionKey, section);
+    }
+  }
+
+  return Array.from(byKey.values()).sort((a, b) => a.displayOrder - b.displayOrder);
+}
+
+function normalizeTheme(value: unknown) {
+  return isRecord(value) ? value as LandingPageDraft["theme"] : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readString(value: unknown, fallback: string) {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : fallback;
+}
+
+function readInteger(value: unknown, fallback: number) {
+  return typeof value === "number" && Number.isInteger(value) ? value : fallback;
+}
+
+function readSectionKey(value: unknown) {
+  const allowed = ["hero", "overview", "timeline", "eligibility", "judging", "faq", "cta"];
+  return typeof value === "string" && allowed.includes(value) ? value : null;
 }
 
 function jsonResponse(body: Record<string, unknown>, status = 200) {

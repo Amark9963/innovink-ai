@@ -36,6 +36,12 @@ const sendMessageSchema = z.object({
   workspaceId: z.uuid(),
   sessionId: z.uuid().optional(),
   message: z.string().trim().min(8).max(3000),
+  clientMessageId: z.string().trim().min(8).max(120).optional(),
+});
+
+const createProgramWorkspaceSchema = z.object({
+  workspaceId: z.uuid(),
+  programName: z.string().trim().max(140).optional(),
 });
 
 const sessionOnlySchema = z.object({
@@ -429,6 +435,7 @@ export async function sendCreateAgentMessageAction(formData: FormData) {
     workspaceId: formData.get("workspaceId"),
     sessionId: formData.get("sessionId") || undefined,
     message: formData.get("message"),
+    clientMessageId: formData.get("clientMessageId") || undefined,
   });
 
   if (!parsed.success) {
@@ -459,6 +466,9 @@ export async function sendCreateAgentMessageAction(formData: FormData) {
         source: "chat",
         status: "collecting_requirements",
         confidence_level: "medium",
+        current_brief: toJson({}),
+        assumptions: toJson([]),
+        open_questions: toJson([]),
       })
       .select("id")
       .single();
@@ -538,9 +548,10 @@ export async function sendCreateAgentMessageAction(formData: FormData) {
     role: "user",
     kind: "chat",
     content_text: parsed.data.message,
-      content_payload: {
-        source: "pm_chat",
-      },
+    content_payload: {
+      source: "pm_chat",
+      clientMessageId: parsed.data.clientMessageId ?? null,
+    },
   });
 
   if (userMessageError) {
@@ -1810,6 +1821,87 @@ export async function sendCreateAgentMessageAction(formData: FormData) {
       }),
     );
   }
+}
+
+export async function createNewProgramWorkspaceAction(formData: FormData) {
+  const parsed = createProgramWorkspaceSchema.safeParse({
+    workspaceId: formData.get("workspaceId"),
+    programName: formData.get("programName") || undefined,
+  });
+
+  if (!parsed.success) {
+    redirect(
+      buildCreateRoute({
+        workspaceId: String(formData.get("workspaceId") ?? ""),
+        error: parsed.error.issues[0]?.message ?? "Invalid program workspace request.",
+      }),
+    );
+  }
+
+  const { supabase, user, selectedWorkspace } = await resolveWorkspaceContext(
+    parsed.data.workspaceId,
+  );
+  const programName = parsed.data.programName?.trim() || "Untitled program";
+
+  const { data: brief, error: briefError } = await supabase
+    .from("program_briefs")
+    .insert({
+      organization_id: selectedWorkspace.organizationId,
+      workspace_id: selectedWorkspace.workspaceId,
+      created_by: user.id,
+      source: "chat",
+      title: programName,
+      status: "collecting_requirements",
+      confidence_level: "medium",
+      current_brief: toJson({}),
+      assumptions: toJson([]),
+      open_questions: toJson([]),
+    })
+    .select("id")
+    .single();
+
+  if (briefError || !brief) {
+    redirect(
+      buildCreateRoute({
+        workspaceId: selectedWorkspace.workspaceId,
+        error: briefError?.message ?? "Unable to create the program brief.",
+      }),
+    );
+  }
+
+  const { data: session, error: sessionError } = await supabase
+    .from("agent_sessions")
+    .insert({
+      brief_id: brief.id,
+      organization_id: selectedWorkspace.organizationId,
+      workspace_id: selectedWorkspace.workspaceId,
+      created_by: user.id,
+      title: programName,
+      status: "active",
+      session_metadata: toJson({
+        surface: "pm_create_workspace",
+        initial_program_name: programName,
+      }),
+    })
+    .select("id")
+    .single();
+
+  if (sessionError || !session) {
+    redirect(
+      buildCreateRoute({
+        workspaceId: selectedWorkspace.workspaceId,
+        error: sessionError?.message ?? "Unable to create the program workspace.",
+      }),
+    );
+  }
+
+  revalidatePath("/app/create");
+  redirect(
+    buildCreateRoute({
+      sessionId: session.id,
+      workspaceId: selectedWorkspace.workspaceId,
+    }),
+  );
 }
 
 export async function generateProgramPlanAction(formData: FormData) {
@@ -3549,6 +3641,173 @@ export async function refineLandingPageAssetDraftAction(formData: FormData) {
       sessionId: parsed.data.sessionId,
       assetKey: parsed.data.assetKey,
       status: "landing-page-updated",
+    }),
+  );
+}
+
+// ── Live program operations ──────────────────────────────────────────────────
+// Applies a governed live-ops change that was proposed by the pm-workspace-agent
+// and approved inline by the PM. Only a narrow set of safe field updates are
+// permitted — anything beyond this requires a full execution run.
+
+const PERMITTED_LIVE_OPS_FIELDS = new Set([
+  "registration_closes_at",
+  "submission_closes_at",
+  "starts_at",
+  "ends_at",
+  "short_description",
+  "long_description",
+  "name",
+  "status",
+]);
+
+const liveOpsChangeSchema = z.object({
+  sessionId: z.uuid(),
+  programId: z.uuid(),
+  fieldPath: z.string().trim().min(1).max(80),
+  proposedValue: z.string().trim().min(1).max(2000),
+  changeDescription: z.string().trim().min(1).max(400),
+});
+
+export async function applyLiveOpsChangeAction(formData: FormData) {
+  const parsed = liveOpsChangeSchema.safeParse({
+    sessionId: formData.get("sessionId"),
+    programId: formData.get("programId"),
+    fieldPath: formData.get("fieldPath"),
+    proposedValue: formData.get("proposedValue"),
+    changeDescription: formData.get("changeDescription"),
+  });
+
+  if (!parsed.success) {
+    redirect(
+      buildCreateRoute({
+        error: parsed.error.issues[0]?.message ?? "Invalid live ops change request.",
+      }),
+    );
+  }
+
+  if (!PERMITTED_LIVE_OPS_FIELDS.has(parsed.data.fieldPath)) {
+    redirect(
+      buildCreateRoute({
+        sessionId: parsed.data.sessionId,
+        error: `Changing '${parsed.data.fieldPath}' is not permitted through live ops. Use a governed execution run instead.`,
+      }),
+    );
+  }
+
+  const { supabase, user, session, selectedWorkspace } = await resolveSessionContext(
+    parsed.data.sessionId,
+  );
+
+  // Verify the session is linked to the program being updated
+  if (session.program_id !== parsed.data.programId) {
+    redirect(
+      buildCreateRoute({
+        sessionId: parsed.data.sessionId,
+        error: "This workspace session is not linked to that program.",
+      }),
+    );
+  }
+
+  // Parse the proposed value based on field type
+  const fieldPath = parsed.data.fieldPath;
+  const isDateField = fieldPath.endsWith("_at");
+  let typedValue: string | Date;
+
+  if (isDateField) {
+    const date = new Date(parsed.data.proposedValue);
+    if (isNaN(date.getTime())) {
+      redirect(
+        buildCreateRoute({
+          sessionId: parsed.data.sessionId,
+          error: "Invalid date format for the proposed change. Expected ISO 8601.",
+        }),
+      );
+    }
+    typedValue = date.toISOString();
+  } else {
+    typedValue = parsed.data.proposedValue;
+  }
+
+  // Build a typed update payload. fieldPath is validated against
+  // PERMITTED_LIVE_OPS_FIELDS above, so every case is safe.
+  type ProgramUpdate = {
+    name?: string;
+    short_description?: string;
+    long_description?: string;
+    status?: string;
+    registration_closes_at?: string;
+    submission_closes_at?: string;
+    starts_at?: string;
+    ends_at?: string;
+  };
+
+  const updatePayload: ProgramUpdate = {};
+  const strValue = typeof typedValue === "string" ? typedValue : (typedValue as Date).toISOString();
+
+  switch (fieldPath) {
+    case "name":                    updatePayload.name = strValue; break;
+    case "short_description":       updatePayload.short_description = strValue; break;
+    case "long_description":        updatePayload.long_description = strValue; break;
+    case "status":                  updatePayload.status = strValue; break;
+    case "registration_closes_at":  updatePayload.registration_closes_at = strValue; break;
+    case "submission_closes_at":    updatePayload.submission_closes_at = strValue; break;
+    case "starts_at":               updatePayload.starts_at = strValue; break;
+    case "ends_at":                 updatePayload.ends_at = strValue; break;
+    default:
+      redirect(buildCreateRoute({
+        sessionId: parsed.data.sessionId,
+        error: `Field '${fieldPath}' is not permitted.`,
+      }));
+  }
+
+  const { error: updateError } = await supabase
+    .from("programs")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .update(updatePayload as any)
+    .eq("id", parsed.data.programId);
+
+  if (updateError) {
+    redirect(
+      buildCreateRoute({
+        sessionId: parsed.data.sessionId,
+        error: updateError.message,
+      }),
+    );
+  }
+
+  // Record the change as an agent event for auditability
+  await runBestEffort(async () => {
+    await supabase.from("agent_messages").insert({
+      session_id: parsed.data.sessionId,
+      brief_id: session.brief_id,
+      role: "assistant",
+      kind: "chat",
+      content_text: `Applied: ${parsed.data.changeDescription}`,
+      content_payload: toJson({
+        workspaceStage: "live",
+        liveOpsApplied: {
+          programId: parsed.data.programId,
+          fieldPath: parsed.data.fieldPath,
+          appliedValue: typedValue,
+          changeDescription: parsed.data.changeDescription,
+        },
+      }),
+    });
+
+    await supabase
+      .from("agent_sessions")
+      .update({ last_message_at: new Date().toISOString() })
+      .eq("id", parsed.data.sessionId);
+  });
+
+  revalidatePath("/app/create");
+  revalidatePath(`/app/programs/${parsed.data.programId}`);
+  redirect(
+    buildCreateRoute({
+      sessionId: parsed.data.sessionId,
+      workspaceId: selectedWorkspace.workspaceId,
+      status: "live-ops-applied",
     }),
   );
 }

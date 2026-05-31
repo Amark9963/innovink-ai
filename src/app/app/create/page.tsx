@@ -3,12 +3,16 @@ import { redirect } from "next/navigation";
 import {
   AssetStatusBadge,
   deriveAssets,
-  type DerivedAsset,
 } from "@/app/app/create/_components/assets-review-workspace";
 import { CreateWorkspaceLive } from "@/app/app/create/_components/create-workspace-live";
 import { buildWorkspaceHref } from "@/app/app/create/_components/session-screen-primitives";
 import { WorkspaceAssetCanvas } from "@/app/app/create/_components/workspace-asset-canvas";
 import { OperatorShell } from "@/components/enterprise/operator-shell";
+import {
+  readSetupProgress,
+  type SetupProgress,
+  type SetupStageStatus,
+} from "@/lib/pm-workspace/setup-progress";
 import {
   getAgentCreateWorkspaceData,
   getApprovalRequestItems,
@@ -27,6 +31,7 @@ type CreatePageProps = {
     prompt?: string;
     panel?: string;
     asset?: string;
+    name?: string;
   }>;
 };
 
@@ -73,11 +78,11 @@ const statusCopy: Record<string, string> = {
   "brief-ready":
     "The brief now has enough structure to draft a serious execution plan.",
   "plan-generated":
-    "A proposed execution plan is ready for review and downstream approvals.",
+    "The execution plan is ready. Review the milestones and approval gates, then generate launch assets or prepare the approval packet.",
   "assets-generated":
     "The requested launch-kit drafts are ready for PM review in the assets workspace.",
   "approval-packet-ready":
-    "The approval packet is ready for governed review. Once it is approved, the workspace can move into deterministic execution.",
+    "The approval packet is ready. Review the governed items and approve to proceed with deterministic execution.",
   "approval-approved":
     "The approval packet is approved. The PM workspace can now move into deterministic execution.",
   "approval-rejected":
@@ -88,6 +93,10 @@ const statusCopy: Record<string, string> = {
     "The approved foundation executed successfully, with some downstream executors still pending implementation.",
   "workspace-guidance":
     "Innova reviewed the current workspace state and recommended the next operator action.",
+  "live-ops-proposed":
+    "Innova proposed a live change. Review it in the thread and click Apply to execute.",
+  "live-ops-applied":
+    "The live program change was applied successfully.",
 };
 
 const templates = [
@@ -164,16 +173,32 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
 
   const selectedWorkspace = data.selectedWorkspace ?? data.workspaces[0];
   const activeSession = data.activeSession;
-  const activeSessionId = activeSession?.id ?? null;
+  const setupProgress = readSetupProgress(activeSession?.sessionMetadata ?? null);
+
+  // If ?workspace= is present without ?session=, the PM explicitly wants a blank
+  // new program — don't auto-resume the most recent session.
+  const forceNewSession = Boolean(params.workspace) && !params.session && !params.prompt;
+  const activeSessionId = forceNewSession ? null : (activeSession?.id ?? null);
   const latestApproval = data.approvals[0] ?? null;
   const approvalItems = latestApproval
     ? await getApprovalRequestItems(supabase, latestApproval.id)
     : [];
   const hasPendingApproval = data.approvals.some((approval) => approval.status === "pending");
   const hasApprovalHistory = data.approvals.length > 0;
+
+  // hasBriefWithContent requires actual structured content — not just a bare
+  // program_briefs row (which is created the moment the first message is sent,
+  // before the AI has generated anything).
+  const hasBriefWithContent =
+    Boolean(data.brief) &&
+    data.brief?.currentBrief != null &&
+    typeof data.brief.currentBrief === "object" &&
+    !Array.isArray(data.brief.currentBrief) &&
+    Object.keys(data.brief.currentBrief as Record<string, unknown>).length > 0;
+
   const canGeneratePlan =
     Boolean(activeSessionId) &&
-    Boolean(data.brief) &&
+    hasBriefWithContent &&
     (data.brief?.status === "collecting_requirements" ||
       data.brief?.status === "ready_for_plan" ||
       data.brief?.status === "plan_generated") &&
@@ -187,10 +212,12 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
     : 0;
   const userName = user.user_metadata.full_name ?? user.email ?? "Operator";
   const userInitial = userName.trim().charAt(0).toUpperCase() || "O";
+
   const workspaceState = deriveWorkspaceState({
     requestedPanel: params.panel,
     sessionId: activeSessionId,
-    hasBrief: Boolean(data.brief),
+    setupProgress,
+    hasBrief: hasBriefWithContent,
     hasPlan: Boolean(data.plan),
     openQuestionCount: briefOpenQuestionCount,
     hasApprovalRequest: hasApprovalHistory,
@@ -213,6 +240,8 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
     activeArtifact === "assets" && params.asset
       ? assets.find((asset) => asset.itemKey === params.asset) ?? null
       : null;
+  const landingPageWorkspaceAsset =
+    assets.find((asset) => asset.editorSurface === "landing-page") ?? null;
   const landingPageEditorMessages: WorkspaceLandingPageEditorMessage[] =
     selectedWorkspaceAsset?.editorSurface === "landing-page"
     ? data.messages
@@ -248,7 +277,77 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
           createdAt: message.createdAt,
         }))
     : [];
+  const inlineApprovalItems =
+    hasPendingApproval && latestApproval?.status === "pending"
+      ? approvalItems.map((item) => ({
+          id: item.id,
+          label: item.title,
+          itemType: item.itemType,
+          status: item.status === "approved" ? ("ok" as const) : ("pending" as const),
+        }))
+      : null;
+  const briefRecord =
+    data.brief?.currentBrief &&
+    typeof data.brief.currentBrief === "object" &&
+    !Array.isArray(data.brief.currentBrief)
+      ? (data.brief.currentBrief as Record<string, unknown>)
+      : null;
+  const briefTimeline = (briefRecord?.timeline ?? {}) as Record<string, string>;
+  const compactTimelineValues = [
+    briefTimeline.registrationWindow,
+    briefTimeline.submissionWindow,
+    briefTimeline.liveProgramWindow,
+  ]
+    .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    .map((item) => item.trim());
+  const inlineBriefTimeline =
+    Array.from(new Set(compactTimelineValues))
+      .filter((item) => typeof item === "string" && item.trim().length > 0)
+      .slice(0, 2)
+      .join(" · ") || null;
+  const inlineBriefCard =
+    data.brief && briefRecord
+      ? {
+          openQuestionCount: briefOpenQuestionCount,
+          programType:
+            data.brief.detectedProgramType ??
+            getStringValue(briefRecord.programType) ??
+            getStringValue(briefRecord.type),
+          objective: getStringValue(briefRecord.objective),
+          format: getStringValue(briefRecord.format),
+          audience: getArrayPreview(briefRecord.targetParticipants),
+          regions: getArrayPreview(briefRecord.regions),
+          teamPolicy: getStringValue(briefRecord.teamPolicy),
+          timeline: inlineBriefTimeline,
+          judging: getStringValue(briefRecord.evaluationModel),
+          output: getArrayPreview(briefRecord.deliverables) ?? inlineBriefTimeline,
+        }
+      : null;
   const approvalSensitiveItemCount = data.planItems.filter((item) => item.requiresApproval).length;
+  const setupActiveStage = activeSessionId
+    ? setupProgress.stages.find((item) => item.key === setupProgress.activeStage)
+    : null;
+  const panelStatusLabel = canExecuteApprovedPlan
+    ? "Approved"
+    : hasPendingApproval
+      ? "Pending"
+      : briefOpenQuestionCount > 0
+        ? `${briefOpenQuestionCount} needed`
+        : setupActiveStage?.status === "complete"
+          ? "Complete"
+          : setupActiveStage?.status === "active"
+            ? "Active"
+            : data.plan
+              ? "Built"
+              : "Draft";
+  const panelStatusTone =
+    panelStatusLabel === "Approved" || panelStatusLabel === "Complete"
+      ? "green"
+      : panelStatusLabel === "Pending" ||
+          panelStatusLabel === "Active" ||
+          panelStatusLabel.includes("needed")
+        ? "gold"
+        : "default";
   return (
     <OperatorShell
       activeNav="ai-workspace"
@@ -264,41 +363,47 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
       workspacePrimaryMode
       hideSidebar
       hideHeader
-      mainClassName="overflow-hidden"
+      mainClassName="pm-workspace-theme overflow-hidden"
       rightPanel={
+        selectedWorkspaceAsset ? null : (
         <>
-          <div className="border-b border-white/7 bg-[#0c1525] px-3 py-2.5">
-            <div className="flex flex-wrap gap-1">
-              {["Brief", "Plan", "Assets", "Approvals"].map((tab) => (
-                <Link
-                  key={tab}
-                  href={
-                    activeSessionId
-                      ? buildWorkspaceHref(
-                          activeSessionId,
-                          tab.toLowerCase() as "brief" | "plan" | "assets" | "approvals",
-                        )
-                      : "#"
-                  }
-                  className={`rounded-md px-3 py-1.5 text-[11px] transition ${
-                    activeArtifact === tab.toLowerCase()
-                      ? "bg-[#162034] font-medium text-[#eae5dc]"
-                      : "text-[#7f90a6] hover:bg-white/[0.03] hover:text-[#c8d3de]"
-                  }`}
-                >
-                  {tab}
-                </Link>
-              ))}
-            </div>
+          {/* ── Panel header — shows current state name */}
+          <div className="flex h-10 shrink-0 items-center gap-2 border-b border-b-[color:var(--ws-b-subtle)] bg-[var(--ws-bg-surface)] px-3.5">
+            <span className="text-[9px] font-bold uppercase tracking-[.1em] text-[var(--ws-t-muted)]">
+              {canExecuteApprovedPlan
+                ? "Ready to confirm"
+                : hasPendingApproval
+                  ? "Under review"
+                  : setupActiveStage
+                    ? setupActiveStage.label
+                    : data.plan
+                      ? "Program structure"
+                      : hasBriefWithContent
+                        ? "Brief"
+                        : "Workspace"}
+            </span>
+            <span
+              className={`ml-auto inline-flex items-center gap-1 rounded-[var(--ws-r-xs)] border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[.06em] ${
+                panelStatusTone === "green"
+                  ? "border-[color:var(--ws-green-bdr)] bg-[var(--ws-green-sub)] text-[var(--ws-green-bright)]"
+                  : panelStatusTone === "gold"
+                    ? "border-[color:var(--ws-gold-bdr)] bg-[var(--ws-gold-sub)] text-[var(--ws-gold-bright)]"
+                    : "border-[color:var(--ws-b-subtle)] bg-[var(--ws-b-faint)] text-[var(--ws-t-muted)]"
+              }`}
+            >
+              {panelStatusLabel}
+            </span>
           </div>
+          {/* ── Panel body — 4-state context-aware content */}
           <div className="flex-1 overflow-y-auto px-3 py-3">
+            {activeSessionId ? <SetupProgressCard progress={setupProgress} /> : null}
             {activeArtifact === "approvals" && latestApproval ? (
               <div className="space-y-3">
-                <section className="rounded-2xl border border-white/7 bg-[#162034] px-3 py-3">
-                  <div className="mb-2 text-[9px] font-semibold uppercase tracking-[0.13em] text-[#b08a28]">
+                <section className="rounded-[var(--ws-r-xl)] border border-[color:var(--ws-b-subtle)] bg-[var(--ws-bg-card)] px-3 py-3">
+                  <div className="mb-2 text-[9px] font-semibold uppercase tracking-[0.13em] text-[var(--ws-gold-bright)]">
                     Approval packet
                   </div>
-                  <div className="truncate text-[14px] font-semibold tracking-[-0.015em] text-[#eae5dc]">
+                  <div className="truncate text-[14px] font-semibold tracking-[-0.015em] text-[var(--ws-t-primary)]">
                     {latestApproval.title ?? "Governed approval review"}
                   </div>
                   <div className="mt-2 flex flex-wrap gap-2">
@@ -338,11 +443,11 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
               </div>
             ) : activeArtifact === "plan" && data.plan ? (
               <div className="space-y-3">
-                <section className="rounded-2xl border border-white/7 bg-[#162034] px-3 py-3">
-                  <div className="mb-2 text-[9px] font-semibold uppercase tracking-[0.13em] text-[#b08a28]">
+                <section className="rounded-[var(--ws-r-xl)] border border-[color:var(--ws-b-subtle)] bg-[var(--ws-bg-card)] px-3 py-3">
+                  <div className="mb-2 text-[9px] font-semibold uppercase tracking-[0.13em] text-[var(--ws-gold-bright)]">
                     Execution plan
                   </div>
-                  <div className="truncate text-[14px] font-semibold tracking-[-0.015em] text-[#eae5dc]">
+                  <div className="truncate text-[14px] font-semibold tracking-[-0.015em] text-[var(--ws-t-primary)]">
                     {data.plan.title ?? "Program plan"}
                   </div>
                   <div className="mt-2 flex flex-wrap gap-2">
@@ -364,42 +469,36 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
               </div>
             ) : activeArtifact === "assets" && activeSessionId ? (
               <div className="space-y-3">
-                <section className="rounded-2xl border border-white/7 bg-[#162034] px-3 py-3">
-                  <div className="mb-2 text-[9px] font-semibold uppercase tracking-[0.13em] text-[#b08a28]">
+                <section className="rounded-[var(--ws-r-xl)] border border-[color:var(--ws-b-subtle)] bg-[var(--ws-bg-card)] px-3 py-3">
+                  <div className="mb-2 text-[9px] font-semibold uppercase tracking-[0.13em] text-[var(--ws-gold-bright)]">
                     Launch-kit drafts
                   </div>
-                  <div className="truncate text-[14px] font-semibold tracking-[-0.015em] text-[#eae5dc]">
-                    {selectedWorkspaceAsset?.title ?? "Asset review workspace"}
+                  <div className="truncate text-[14px] font-semibold tracking-[-0.015em] text-[var(--ws-t-primary)]">
+                    Asset review workspace
                   </div>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <SidebarPill label={`${data.artifacts.length} generated drafts`} />
                     <SidebarPill label={`${data.planItems.length} launch items`} muted />
                     <SidebarPill
                       label={
-                        selectedWorkspaceAsset
-                          ? "Canvas active"
-                          : hasApprovalHistory
-                            ? "Packet prepared"
-                            : "Ready for PM review"
+                        hasApprovalHistory
+                          ? "Packet prepared"
+                          : "Ready for PM review"
                       }
-                      tone={selectedWorkspaceAsset ? "blue" : hasApprovalHistory ? "green" : "blue"}
+                      tone={hasApprovalHistory ? "green" : "blue"}
                     />
                   </div>
                   <div className="mt-3">
-                    {selectedWorkspaceAsset ? (
-                      <AssetWorkspaceSummary asset={selectedWorkspaceAsset} />
-                    ) : (
-                      <AssetsSummary
-                        assetCount={data.artifacts.length}
-                        generatedCount={data.artifacts.length}
-                        planItemsCount={data.planItems.length}
-                      />
-                    )}
+                    <AssetsSummary
+                      assetCount={data.artifacts.length}
+                      generatedCount={data.artifacts.length}
+                      planItemsCount={data.planItems.length}
+                    />
                   </div>
                 </section>
                 {assets.length > 0 ? (
-                  <section className="rounded-2xl border border-white/7 bg-[#162034] px-3 py-3">
-                    <div className="mb-3 text-[9px] font-semibold uppercase tracking-[0.13em] text-[#5e7088]">
+                  <section className="rounded-[var(--ws-r-xl)] border border-[color:var(--ws-b-subtle)] bg-[var(--ws-bg-card)] px-3 py-3">
+                    <div className="mb-3 text-[9px] font-semibold uppercase tracking-[0.13em] text-[var(--ws-t-muted)]">
                       Select asset
                     </div>
                     <div className="space-y-2">
@@ -409,18 +508,14 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
                           href={buildWorkspaceHref(activeSessionId, "assets", {
                             asset: asset.itemKey,
                           })}
-                          className={`block rounded-xl border px-3 py-3 transition ${
-                            selectedWorkspaceAsset?.itemKey === asset.itemKey
-                              ? "border-[#b08a2838] bg-[#b08a2810]"
-                              : "border-white/8 bg-[#111e30] hover:border-white/16 hover:bg-white/[0.03]"
-                          }`}
+                          className="block rounded-[var(--ws-r-lg)] border border-[color:var(--ws-b-default)] bg-[var(--ws-bg-elevated)] px-3 py-3 transition hover:border-[color:var(--ws-b-strong)] hover:bg-[var(--ws-bg-hover)]"
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                              <div className="truncate text-[12px] font-medium text-[#eae5dc]">
+                              <div className="truncate text-[12px] font-medium text-[var(--ws-t-primary)]">
                                 {asset.title}
                               </div>
-                              <div className="mt-1 text-[10.5px] text-[#7f90a6]">
+                              <div className="mt-1 text-[10.5px] text-[var(--ws-t-tertiary)]">
                                 {asset.meta}
                               </div>
                             </div>
@@ -434,80 +529,91 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
                   </section>
                 ) : null}
               </div>
-            ) : data.brief ? (
-              <div className="space-y-3">
-                <section className="rounded-2xl border border-white/7 bg-[#162034] px-3 py-3">
-                  <div className="mb-2 text-[9px] font-semibold uppercase tracking-[0.13em] text-[#b08a28]">
+            ) : hasBriefWithContent ? (
+              <div>
+                <section className="px-3.5 pt-3.5">
+                  <div
+                    className={`mb-1 text-[9px] font-bold uppercase tracking-[.13em] ${
+                      briefOpenQuestionCount > 0
+                        ? "text-[var(--ws-amber-bright)]"
+                        : "text-[var(--ws-green-bright)]"
+                    }`}
+                  >
                     Structured brief
                   </div>
-                  <div className="truncate text-[14px] font-semibold tracking-[-0.015em] text-[#eae5dc]">
-                    {data.brief.title ?? "Program Brief"}
+                  <div className="truncate text-[13px] font-bold tracking-[-0.015em] text-[var(--ws-t-primary)]">
+                    {data.brief?.title ?? "Program Brief"}
                   </div>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <SidebarPill label={data.brief.detectedProgramType ?? "Program type pending"} />
-                    <SidebarPill label={`Confidence ${data.brief.confidenceLevel}`} muted />
+                  <div className="mt-2 flex flex-wrap gap-1.5">
                     <SidebarPill
                       label={
                         briefOpenQuestionCount > 0
-                          ? `${briefOpenQuestionCount} open inputs`
-                          : "Ready for planning"
+                          ? `${briefOpenQuestionCount} needed`
+                          : "Ready"
                       }
                       tone={briefOpenQuestionCount > 0 ? "amber" : "green"}
                     />
+                    {data.brief?.detectedProgramType ? (
+                      <SidebarPill label={data.brief.detectedProgramType} muted />
+                    ) : null}
+                    {data.brief?.confidenceLevel ? (
+                      <SidebarPill label={`Confidence ${data.brief.confidenceLevel}`} muted />
+                    ) : null}
                   </div>
-                  <div className="mt-3">
-                    <BriefSummary brief={data.brief.currentBrief} />
+                </section>
+                <div className="my-3 h-px bg-[var(--ws-b-subtle)]" />
+                <section className="px-3.5">
+                  <div className="mb-2 text-[9px] font-bold uppercase tracking-[.12em] text-[var(--ws-t-muted)]">
+                    Summary
                   </div>
+                  <BriefSummary brief={briefRecord} />
                 </section>
               </div>
             ) : (
-              <div className="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-white/10 bg-[#162034] px-8 py-10 text-center">
-                <div className="flex h-14 w-14 items-center justify-center rounded-full border border-[#b08a2838] bg-[#b08a2810] text-[#ccaa4a]">
+              <div className="flex h-full flex-col items-center justify-center rounded-[var(--ws-r-xl)] border border-dashed border-[color:var(--ws-b-default)] bg-[var(--ws-bg-card)] px-8 py-10 text-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full border border-[color:var(--ws-gold-bdr)] bg-[var(--ws-gold-sub)] text-[var(--ws-gold-bright)]">
                   <DocumentIcon />
                 </div>
-                <div className="mt-5 text-[18px] font-semibold text-[#eae5dc]">
+                <div className="mt-5 text-[18px] font-semibold text-[var(--ws-t-primary)]">
                   Brief will appear here
                 </div>
-                <p className="mt-3 max-w-[250px] text-[12px] leading-6 text-[#9baabf]">
+                <p className="mt-3 max-w-[250px] text-[12px] leading-6 text-[var(--ws-t-secondary)]">
                   Describe your program in the chat and Innova will generate a structured program brief for review and approval.
                 </p>
-                <div className="mt-5 text-[11.5px] text-[#5e7088]">
-                  Start by describing your program -&gt;
+                <div className="mt-5 text-[11.5px] text-[var(--ws-t-muted)]">
+                  Start by describing your program →
                 </div>
               </div>
             )}
-          </div>
-          <div className="border-t border-white/7 bg-[#111e30] px-3 py-3">
-            <div className="space-y-2">
-              {workspaceState.primaryAction ? (
-                <div className="rounded-lg border border-white/8 bg-[#0c1525] px-3 py-3">
-                  <div className="text-[9px] font-semibold uppercase tracking-[0.12em] text-[#5e7088]">
-                    Next step
-                  </div>
-                  <div className="mt-2 text-[12px] font-medium text-[#eae5dc]">
-                    {workspaceState.primaryAction.label}
-                  </div>
-                  <div className="mt-1 text-[10.5px] leading-5 text-[#6f8199]">
-                    Use the latest Innova turn in the conversation to continue. The thread is the canonical action surface.
-                  </div>
+            {activeSessionId && landingPageWorkspaceAsset && !selectedWorkspaceAsset ? (
+              <section className="mt-3 rounded-[var(--ws-r-lg)] border border-[color:var(--ws-blue-bdr)] bg-[var(--ws-blue-sub)] px-3 py-3">
+                <div className="text-[9px] font-bold uppercase tracking-[.12em] text-[var(--ws-blue-bright)]">
+                  Page editor
                 </div>
-              ) : null}
-              {!workspaceState.primaryAction ? (
-                <div className="text-center text-[10px] leading-5 text-[#5e7088]">
-                  {workspaceState.footerHint}
+                <div className="mt-1 text-[12px] font-semibold text-[var(--ws-t-primary)]">
+                  {landingPageWorkspaceAsset.title}
                 </div>
-              ) : null}
-              {workspaceState.secondaryLink ? (
+                <p className="mt-1.5 text-[10.5px] leading-5 text-[var(--ws-t-secondary)]">
+                  Open the conversational landing-page canvas without leaving the AI Workspace.
+                </p>
                 <Link
-                  href={workspaceState.secondaryLink.href}
-                  className="block px-2 py-1 text-center text-[12px] text-[#7f90a6] transition hover:text-[#eae5dc]"
+                  href={buildWorkspaceHref(activeSessionId, "assets", {
+                    asset: landingPageWorkspaceAsset.itemKey,
+                  })}
+                  className="mt-3 block rounded-[var(--ws-r-md)] border border-[color:var(--ws-blue-bdr)] bg-[var(--ws-bg-card)] px-3 py-2 text-center text-[11.5px] font-semibold text-[var(--ws-blue-bright)] transition hover:bg-[var(--ws-bg-elevated)] hover:text-[var(--ws-t-primary)]"
                 >
-                  {workspaceState.secondaryLink.label}
+                  Open page editor →
                 </Link>
-              ) : null}
-            </div>
+              </section>
+            ) : null}
+          </div>
+          <div className="shrink-0 border-t border-t-[color:var(--ws-b-subtle)] px-3 py-2.5">
+            <p className="text-center text-[10px] leading-relaxed text-[var(--ws-t-muted)]">
+              Innova drafts · you approve · services execute
+            </p>
           </div>
         </>
+        )
       }
     >
       {selectedWorkspaceAsset && activeSessionId ? (
@@ -526,7 +632,7 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
         />
       ) : (
         <CreateWorkspaceLive
-          key={`workspace-live-${activeSessionId ?? "new"}-${data.messages.length}-${data.runs.length}-${data.events.length}-${params.status ?? "idle"}-${params.error ?? "ok"}`}
+          key={`workspace-live-${activeSessionId ?? "new"}-${selectedWorkspace.workspaceId}`}
           workspaceId={selectedWorkspace.workspaceId}
           sessionId={activeSessionId}
           initialSessions={data.sessions}
@@ -534,6 +640,7 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
           initialRuns={data.runs}
           initialEvents={data.events}
           initialPrompt={params.prompt ?? ""}
+          initialProgramName={params.name ? decodeURIComponent(params.name) : null}
           initialStatus={params.status ?? null}
           initialError={params.error ?? null}
           statusCopy={statusCopy}
@@ -543,17 +650,10 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
           userInitial={userInitial}
           primaryAction={workspaceState.primaryAction}
           secondaryLink={workspaceState.secondaryLink}
-          inlineBriefCard={
-            data.brief
-              ? {
-                  openQuestionCount: briefOpenQuestionCount,
-                  programType: data.brief.detectedProgramType,
-                  format: getStringValue((data.brief.currentBrief as Record<string, unknown> | null)?.format),
-                  regions: getArrayPreview((data.brief.currentBrief as Record<string, unknown> | null)?.regions),
-                  teamPolicy: getStringValue((data.brief.currentBrief as Record<string, unknown> | null)?.teamPolicy),
-                }
-              : null
-          }
+          inlineApprovalRequestId={hasPendingApproval ? latestApproval?.id ?? null : null}
+          inlineApprovalRequestedAt={hasPendingApproval ? latestApproval?.requestedAt ?? null : null}
+          inlineApprovalItems={inlineApprovalItems}
+          inlineBriefCard={inlineBriefCard}
         />
       )}
     </OperatorShell>
@@ -562,10 +662,80 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
 
 function EmptySidebarCopy({ text }: { text: string }) {
   return (
-    <div className="rounded-lg border border-dashed border-white/10 bg-[#1b2840] px-3 py-3 text-[11px] leading-5 text-[#9baabf]">
+    <div className="rounded-[var(--ws-r-lg)] border border-dashed border-[color:var(--ws-b-default)] bg-[var(--ws-bg-elevated)] px-3 py-3 text-[11px] leading-5 text-[var(--ws-t-secondary)]">
       {text}
     </div>
   );
+}
+
+function SetupProgressCard({ progress }: { progress: SetupProgress }) {
+  const activeStage = progress.stages.find(
+    (stage) => stage.key === progress.activeStage,
+  );
+
+  return (
+    <section className="mb-3 rounded-[var(--ws-r-xl)] border border-[color:var(--ws-b-subtle)] bg-[var(--ws-bg-card)] px-3 py-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div>
+          <div className="text-[9px] font-bold uppercase tracking-[.13em] text-[var(--ws-blue-bright)]">
+            Setup progress
+          </div>
+          <div className="mt-0.5 text-[12.5px] font-semibold text-[var(--ws-t-primary)]">
+            {activeStage?.label ?? "Workspace"} active
+          </div>
+        </div>
+        {progress.recommendedStage ? (
+          <span className="rounded-[var(--ws-r-xs)] border border-[color:var(--ws-gold-bdr)] bg-[var(--ws-gold-sub)] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[.06em] text-[var(--ws-gold-bright)]">
+            Next
+          </span>
+        ) : null}
+      </div>
+      <div className="grid grid-cols-4 gap-1.5">
+        {progress.stages.slice(0, 8).map((stage) => (
+          <div
+            key={stage.key}
+            className={`rounded-[var(--ws-r-sm)] border px-2 py-1.5 ${setupStageClassName(stage.status)}`}
+            title={stage.label}
+          >
+            <div className="mb-1 flex items-center gap-1">
+              <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full border border-current text-[8px]">
+                {setupStageIcon(stage.status)}
+              </span>
+              <span className="truncate text-[9.5px] font-semibold">
+                {stage.label}
+              </span>
+            </div>
+            <div className="truncate text-[8.5px] uppercase tracking-[.05em] opacity-75">
+              {stage.status.replaceAll("_", " ")}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function setupStageClassName(status: SetupStageStatus) {
+  if (status === "complete") {
+    return "border-[color:var(--ws-green-bdr)] bg-[var(--ws-green-sub)] text-[var(--ws-green-bright)]";
+  }
+
+  if (status === "active") {
+    return "border-[color:var(--ws-gold-bdr)] bg-[var(--ws-gold-sub)] text-[var(--ws-gold-bright)]";
+  }
+
+  if (status === "blocked") {
+    return "border-[color:var(--ws-red-bdr)] bg-[var(--ws-red-sub)] text-[var(--ws-red-bright)]";
+  }
+
+  return "border-[color:var(--ws-b-subtle)] bg-[var(--ws-bg-elevated)] text-[var(--ws-t-muted)]";
+}
+
+function setupStageIcon(status: SetupStageStatus) {
+  if (status === "complete") return "✓";
+  if (status === "active") return "•";
+  if (status === "blocked") return "!";
+  return "";
 }
 
 function BriefSummary({ brief }: { brief: unknown }) {
@@ -614,17 +784,17 @@ function SummaryField({
   needsInput?: boolean;
 }) {
   return (
-    <div className="grid grid-cols-[68px_1fr] gap-x-3 py-1.5">
-      <p className="pt-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-[#7f90a6]">
+    <div className="grid grid-cols-[74px_1fr] items-start gap-x-2 border-b border-b-[color:var(--ws-b-faint)] py-1 last:border-0">
+      <p className="pt-px text-[10px] font-semibold uppercase leading-[1.4] tracking-[.06em] text-[var(--ws-t-muted)]">
         {label}
       </p>
       <div
-        className={`min-w-0 truncate text-[11.5px] leading-5 ${primary ? "text-[#eae5dc]" : "text-[#c8d3de]"}`}
+        className={`min-w-0 text-[12px] leading-[1.45] ${primary ? "text-[var(--ws-t-primary)]" : "text-[var(--ws-t-secondary)]"}`}
         title={value}
       >
-        <span className="truncate">{value}</span>
+        <span>{value}</span>
         {needsInput ? (
-          <span className="ml-2 inline-flex items-center gap-1 rounded-md border border-[#c9973a40] bg-[#c9973a12] px-1.5 py-0.5 text-[9px] font-semibold text-[#e8c26d]">
+          <span className="ml-2 inline-flex items-center gap-1 rounded-[var(--ws-r-xs)] border border-[color:var(--ws-amber-bdr)] bg-[var(--ws-amber-sub)] px-1.5 py-0.5 text-[9px] font-semibold text-[var(--ws-amber-bright)]">
             <MiniWarnIcon />
             needed
           </span>
@@ -691,25 +861,6 @@ function AssetsSummary({
   );
 }
 
-function AssetWorkspaceSummary({ asset }: { asset: DerivedAsset }) {
-  return (
-    <div className="space-y-0">
-      <SummaryField label="Type" value={getCompactValue(asset.previewTitle)} primary />
-      <SummaryField label="Status" value={getCompactValue(asset.statusLabel)} />
-      <SummaryField label="Meta" value={getCompactValue(asset.meta)} />
-      <SummaryField
-        label="Canvas"
-        value={
-          asset.editorSurface === "landing-page"
-            ? "Conversational editor ready"
-            : "Open full review"
-        }
-        needsInput={asset.editorSurface !== "landing-page"}
-      />
-    </div>
-  );
-}
-
 function ApprovalSummary({
   approval,
   approvalSensitiveItemCount,
@@ -755,18 +906,18 @@ function SidebarPill({
 }) {
   const toneClass =
     tone === "amber"
-      ? "border-[#c9973a40] bg-[#c9973a12] text-[#e8c26d]"
+      ? "border-[color:var(--ws-amber-bdr)] bg-[var(--ws-amber-sub)] text-[var(--ws-amber-bright)]"
       : tone === "green"
-        ? "border-[#2d7a5840] bg-[#2d7a5812] text-[#9ad0b7]"
+        ? "border-[color:var(--ws-green-bdr)] bg-[var(--ws-green-sub)] text-[var(--ws-green-bright)]"
         : tone === "blue"
-          ? "border-[#3a6e9e44] bg-[#3a6e9e12] text-[#c4d8ec]"
+          ? "border-[color:var(--ws-blue-bdr)] bg-[var(--ws-blue-sub)] text-[var(--ws-blue-bright)]"
         : muted
-          ? "border-white/10 bg-white/[0.02] text-[#7f90a6]"
-          : "border-white/10 bg-white/[0.03] text-[#9baabf]";
+          ? "border-[color:var(--ws-b-subtle)] bg-[var(--ws-b-faint)] text-[var(--ws-t-muted)]"
+          : "border-[color:var(--ws-b-subtle)] bg-[var(--ws-b-faint)] text-[var(--ws-t-tertiary)]";
 
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-2 py-1 text-[9.5px] font-medium ${toneClass}`}
+      className={`inline-flex items-center rounded-[var(--ws-r-xs)] border px-[7px] py-0.5 text-[9px] font-bold uppercase tracking-[.06em] ${toneClass}`}
     >
       {label}
     </span>
@@ -842,9 +993,64 @@ function formatSidebarDateTime(value: string | null) {
   }).format(new Date(value));
 }
 
+function deriveStageFromSetupProgress(
+  progress: SetupProgress,
+  context: {
+    canExecuteApprovedPlan: boolean;
+    hasPendingApproval: boolean;
+    hasApprovalRequest: boolean;
+    hasPlan: boolean;
+  },
+) {
+  if (context.canExecuteApprovedPlan) {
+    return { label: "Ready to execute", tone: "green" as const };
+  }
+
+  if (context.hasPendingApproval) {
+    return { label: "Ready to review", tone: "gold" as const };
+  }
+
+  const activeStage = progress.stages.find(
+    (stage) => stage.key === progress.activeStage,
+  );
+
+  if (!activeStage) {
+    return context.hasPlan
+      ? { label: "Plan ready", tone: "green" as const }
+      : { label: "Brief ready", tone: "green" as const };
+  }
+
+  if (activeStage.key === "brief") {
+    return activeStage.status === "complete"
+      ? { label: "Brief ready", tone: "green" as const }
+      : { label: "Drafting brief", tone: "gold" as const };
+  }
+
+  if (activeStage.key === "approval") {
+    return context.hasApprovalRequest
+      ? { label: "Ready to review", tone: "gold" as const }
+      : { label: "Approvals next", tone: "gold" as const };
+  }
+
+  if (activeStage.key === "execution") {
+    return { label: "Ready to execute", tone: "green" as const };
+  }
+
+  const label =
+    activeStage.status === "complete"
+      ? `${activeStage.label} ready`
+      : `${activeStage.label} next`;
+
+  return {
+    label,
+    tone: activeStage.status === "complete" ? ("green" as const) : ("gold" as const),
+  };
+}
+
 function deriveWorkspaceState({
   requestedPanel,
   sessionId,
+  setupProgress,
   hasBrief,
   hasPlan,
   openQuestionCount,
@@ -858,6 +1064,7 @@ function deriveWorkspaceState({
 }: {
   requestedPanel?: string;
   sessionId: string | null;
+  setupProgress?: SetupProgress;
   hasBrief: boolean;
   hasPlan: boolean;
   openQuestionCount: number;
@@ -879,6 +1086,13 @@ function deriveWorkspaceState({
   const stage =
     !hasBrief
       ? { label: "Drafting brief", tone: "gold" as const }
+      : setupProgress && openQuestionCount === 0
+        ? deriveStageFromSetupProgress(setupProgress, {
+            canExecuteApprovedPlan,
+            hasPendingApproval,
+            hasApprovalRequest,
+            hasPlan,
+          })
       : !hasPlan
         ? openQuestionCount > 0
           ? {
@@ -935,7 +1149,7 @@ function deriveWorkspaceState({
             }
           : {
               href: `/app/create/${sessionId}/brief`,
-              label: "Open full brief review",
+              label: "Inspect full brief",
             }
     : null;
 

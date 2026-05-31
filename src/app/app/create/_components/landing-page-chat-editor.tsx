@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
   AssetDraftPreview,
@@ -9,6 +9,7 @@ import {
   buildCreateHref,
   type DerivedAsset,
 } from "@/app/app/create/_components/assets-review-workspace";
+import { LandingPageDraftPreview } from "@/app/app/create/_components/landing-page-draft-preview";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type LandingPageEditorMessage = {
@@ -43,6 +44,7 @@ type LandingPageChatEditorProps = {
   asset: DerivedAsset;
   initialMessages: LandingPageEditorMessage[];
   embeddedInWorkspace?: boolean;
+  publishPanel?: ReactNode;
 };
 
 type OptimisticEditorMessage = LandingPageEditorMessage & {
@@ -61,11 +63,7 @@ type RevisionNotice = {
   body: string;
 };
 
-const starterPrompts = [
-  "Make the hero more premium and executive-facing.",
-  "Introduce the program as employee-only and shorten the overview.",
-  "Add a clearer FAQ section and a stronger registration CTA.",
-] as const;
+type SaveState = "idle" | "saving" | "saved" | "undoing" | "error";
 
 export function LandingPageChatEditor({
   sessionId,
@@ -73,6 +71,7 @@ export function LandingPageChatEditor({
   asset,
   initialMessages,
   embeddedInWorkspace = false,
+  publishPanel,
 }: LandingPageChatEditorProps) {
   const router = useRouter();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -85,6 +84,13 @@ export function LandingPageChatEditor({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [revisionNotice, setRevisionNotice] = useState<RevisionNotice | null>(null);
+  const [draftPayload, setDraftPayload] = useState<Record<string, unknown>>(() =>
+    getLandingPagePayload(asset),
+  );
+  const [savedDraftPayload, setSavedDraftPayload] = useState<Record<string, unknown>>(() =>
+    getLandingPagePayload(asset),
+  );
+  const [saveState, setSaveState] = useState<SaveState>("idle");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -198,6 +204,11 @@ export function LandingPageChatEditor({
     );
   }, [messages, optimisticMessages]);
 
+  const hasUnsavedChanges = useMemo(
+    () => JSON.stringify(draftPayload) !== JSON.stringify(savedDraftPayload),
+    [draftPayload, savedDraftPayload],
+  );
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -285,6 +296,112 @@ export function LandingPageChatEditor({
     }
   }
 
+  async function handleSaveDraft() {
+    if (!hasUnsavedChanges || saveState === "saving") {
+      return;
+    }
+
+    setSaveState("saving");
+    setErrorMessage(null);
+
+    try {
+      const response = await fetch("/api/pm-workspace/assets/landing-page/save", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          sessionId,
+          assetKey,
+          draftPayload,
+        }),
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+        throw new Error(payload?.error ?? "The manual landing page save failed.");
+      }
+
+      setSavedDraftPayload(draftPayload);
+      setSaveState("saved");
+      setRevisionNotice({
+        id: `${Date.now()}`,
+        title: "Manual draft saved",
+        body: "Your inline page edits were saved as a new governed draft revision.",
+      });
+      router.refresh();
+    } catch (error) {
+      setSaveState("error");
+      setErrorMessage(
+        error instanceof Error ? error.message : "The manual landing page save failed.",
+      );
+    }
+  }
+
+  async function handleUndoDraft() {
+    if (saveState === "undoing") {
+      return;
+    }
+
+    setSaveState("undoing");
+    setErrorMessage(null);
+
+    try {
+      const response = await fetch("/api/pm-workspace/assets/landing-page/undo", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          sessionId,
+          assetKey,
+        }),
+      });
+
+      const payload = (await response.json().catch(() => null)) as
+        | { draftPayload?: Record<string, unknown>; error?: string }
+        | null;
+
+      if (!response.ok || !payload?.draftPayload) {
+        throw new Error(payload?.error ?? "There is no previous landing page revision to restore.");
+      }
+
+      setDraftPayload(payload.draftPayload);
+      setSavedDraftPayload(payload.draftPayload);
+      setSaveState("saved");
+      setRevisionNotice({
+        id: `${Date.now()}`,
+        title: "Previous revision restored",
+        body: "Undo created a new governed draft from the previous landing-page revision.",
+      });
+      router.refresh();
+    } catch (error) {
+      setSaveState("error");
+      setErrorMessage(
+        error instanceof Error ? error.message : "The landing page undo action failed.",
+      );
+    }
+  }
+
+  function handleSectionFieldChange(
+    sectionKey: string,
+    field: "headline" | "subheadline" | "body" | "ctaLabel",
+    value: string,
+  ) {
+    setSaveState("idle");
+    setDraftPayload((current) => updateLandingPageSection(current, sectionKey, field, value));
+  }
+
+  function handleTitleChange(value: string) {
+    setSaveState("idle");
+    setDraftPayload((current) => ({
+      ...current,
+      title: value,
+    }));
+  }
+
   function handleStreamEvent(event: LandingPageEditorStreamEvent) {
     if (event.type === "status") {
       setStreamingAssistant((current) => ({
@@ -320,16 +437,50 @@ export function LandingPageChatEditor({
     setErrorMessage(event.message);
   }
 
+  const canvasMode = Boolean(publishPanel);
+  const previewUrl = resolvePreviewUrl(asset);
+  const previewStatusLabel = previewUrl ? "Preview ready" : "Draft preview";
+
   return (
-    <div className="grid gap-5 xl:grid-cols-[minmax(340px,0.8fr)_minmax(0,1.2fr)]">
-      <section className="flex min-h-[720px] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#111e30]">
-        <div className="border-b border-white/7 px-5 py-4">
+    <div
+      className={
+        canvasMode
+          ? "pm-workspace-theme grid h-full grid-cols-[320px_minmax(640px,1fr)_280px] overflow-hidden bg-[var(--ws-bg-base)]"
+          : "grid gap-5 xl:grid-cols-[minmax(340px,0.8fr)_minmax(0,1.2fr)]"
+      }
+    >
+      <section
+        className={
+          canvasMode
+            ? "flex min-h-0 flex-col overflow-hidden border-r border-r-[color:var(--ws-b-subtle)] bg-[var(--ws-bg-base)]"
+            : "flex min-h-[720px] flex-col overflow-hidden rounded-2xl border border-[color:var(--ws-b-default)] bg-[var(--ws-bg-panel)]"
+        }
+      >
+        <div
+          className={
+            canvasMode
+              ? "shrink-0 border-b border-b-[color:var(--ws-b-faint)] bg-[var(--ws-bg-surface)] px-3.5 py-3"
+              : "border-b border-b-[color:var(--ws-b-subtle)] px-5 py-4"
+          }
+        >
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5e7088]">
+              <div
+                className={
+                  canvasMode
+                    ? "text-[9px] font-bold uppercase tracking-[.12em] text-[var(--ws-gold-bright)]"
+                    : "text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--ws-t-tertiary)]"
+                }
+              >
                 Innova Page Editor
               </div>
-              <div className="mt-2 text-[15px] font-semibold text-[#eae5dc]">
+              <div
+                className={
+                  canvasMode
+                    ? "mt-1 text-[12px] font-medium leading-snug text-[var(--ws-t-primary)]"
+                    : "mt-2 text-[15px] font-semibold text-[var(--ws-t-primary)]"
+                }
+              >
                 Refine this landing page conversationally
               </div>
             </div>
@@ -339,57 +490,63 @@ export function LandingPageChatEditor({
                   sessionId,
                   asset.editPrompt,
                 )}
-                className="rounded-full border border-white/10 px-3 py-2 text-[11px] font-medium text-[#9baabf] transition hover:bg-white/[0.04] hover:text-[#eae5dc]"
+                className="rounded-full border border-[color:var(--ws-b-default)] px-3 py-2 text-[11px] font-medium text-[var(--ws-t-secondary)] transition hover:bg-[var(--ws-b-faint)] hover:text-[var(--ws-t-primary)]"
               >
                 Open in PM workspace
               </Link>
             ) : (
-              <span className="rounded-full border border-[#3a6e9e44] bg-[#3a6e9e12] px-3 py-2 text-[11px] font-medium text-[#c4d8ec]">
-                Editing inside AI Workspace
-              </span>
+              <div className="flex items-center gap-2">
+                <Link
+                  href={`/app/create?session=${sessionId}&panel=assets`}
+                  className="rounded-[var(--ws-r-xs)] border border-[color:var(--ws-b-subtle)] bg-[var(--ws-bg-card)] px-2 py-1 text-[9px] font-bold uppercase tracking-[.06em] text-[var(--ws-t-tertiary)] transition hover:border-[color:var(--ws-b-default)] hover:text-[var(--ws-t-primary)]"
+                >
+                  Workspace
+                </Link>
+                <span className="rounded-[var(--ws-r-xs)] border border-[color:var(--ws-blue-bdr)] bg-[var(--ws-blue-sub)] px-2 py-1 text-[9px] font-bold uppercase tracking-[.06em] text-[var(--ws-blue-bright)]">
+                  Canvas
+                </span>
+              </div>
             )}
-          </div>
-          <p className="mt-3 max-w-[680px] text-[12px] leading-7 text-[#9baabf]">
-            Describe branding, tone, hierarchy, copy, or section changes naturally. Innova will create a new governed draft revision instead of mutating the live page directly.
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {starterPrompts.map((prompt) => (
-              <button
-                key={prompt}
-                type="button"
-                onClick={() => {
-                  if (textareaRef.current) {
-                    textareaRef.current.value = prompt;
-                    textareaRef.current.focus();
-                  }
-                }}
-                className="rounded-full border border-white/10 bg-[#162034] px-3 py-2 text-left text-[11px] text-[#9baabf] transition hover:border-white/20 hover:text-[#eae5dc]"
-              >
-                {prompt}
-              </button>
-            ))}
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-5">
+        {canvasMode && revisionNotice ? (
+          <div className="flex shrink-0 items-start gap-2 border-b border-b-[color:var(--ws-green-bdr)] bg-[var(--ws-green-sub)] px-3.5 py-2.5">
+            <RevisionCheckIcon />
+            <div className="text-[11px] leading-5 text-[var(--ws-t-secondary)]">
+              <strong className="font-semibold text-[var(--ws-green-bright)]">
+                {revisionNotice.title}
+              </strong>{" "}
+              {revisionNotice.body}
+            </div>
+          </div>
+        ) : null}
+
+        <div className={canvasMode ? "flex-1 overflow-y-auto px-3.5 py-3" : "flex-1 overflow-y-auto px-5 py-5"}>
           {mergedMessages.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-white/10 bg-[#0d1727] px-5 py-5 text-[12px] leading-7 text-[#9baabf]">
+            <div
+              className={
+                canvasMode
+                  ? "rounded-[var(--ws-r-lg)] border border-dashed border-[color:var(--ws-b-default)] bg-[var(--ws-bg-input)] px-3 py-3 text-[11px] leading-5 text-[var(--ws-t-secondary)]"
+                  : "rounded-2xl border border-dashed border-[color:var(--ws-b-default)] bg-[var(--ws-bg-input)] px-5 py-5 text-[12px] leading-7 text-[var(--ws-t-secondary)]"
+              }
+            >
               Start with a natural request like &ldquo;Make the hero more premium and adjust the colors toward midnight blue and gold,&rdquo; then review the new page revision in the preview.
             </div>
           ) : (
-            <div className="space-y-6">
+            <div className={canvasMode ? "flex flex-col gap-3" : "space-y-6"}>
               {mergedMessages.map((message) => (
                 <div
                   key={message.id}
-                  className={message.role === "user" ? "ml-auto max-w-[82%]" : "max-w-[88%]"}
+                  className={message.role === "user" ? "ml-auto max-w-[86%]" : "max-w-[92%]"}
                 >
-                  <div className="mb-2 flex items-center gap-2 text-[11px] text-[#6f8199]">
-                    <span className="font-semibold text-[#9baabf]">
+                  <div className="mb-1.5 flex items-center gap-2 text-[10.5px] text-[var(--ws-t-muted)]">
+                    <span className="font-semibold text-[var(--ws-t-secondary)]">
                       {message.role === "user" ? "You" : "Innova"}
                     </span>
                     <span>{formatTimestamp(message.createdAt)}</span>
                     {"optimistic" in message ? (
-                      <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-[#9baabf]">
+                      <span className="rounded-full border border-[color:var(--ws-b-default)] px-2 py-0.5 text-[10px] text-[var(--ws-t-secondary)]">
                         Sending
                       </span>
                     ) : null}
@@ -397,8 +554,12 @@ export function LandingPageChatEditor({
                   <div
                     className={
                       message.role === "user"
-                        ? "rounded-2xl border border-white/10 bg-[#182742] px-5 py-4 text-[14px] leading-8 text-[#eae5dc]"
-                        : "rounded-2xl border border-white/10 bg-[#0d1727] px-5 py-4 text-[14px] leading-8 text-[#eae5dc]"
+                        ? canvasMode
+                          ? "rounded-[var(--ws-r-md)] rounded-tr-[2px] border border-[color:var(--ws-b-default)] bg-[var(--ws-bg-elevated)] px-3 py-2.5 text-[12px] leading-5 text-[var(--ws-t-primary)]"
+                          : "rounded-2xl border border-[color:var(--ws-b-default)] bg-[var(--ws-bg-elevated)] px-5 py-4 text-[14px] leading-8 text-[var(--ws-t-primary)]"
+                        : canvasMode
+                          ? "rounded-[var(--ws-r-md)] rounded-tl-[2px] border border-[color:var(--ws-b-subtle)] bg-[var(--ws-bg-card)] px-3 py-2.5 text-[12px] leading-5 text-[var(--ws-t-secondary)]"
+                          : "rounded-2xl border border-[color:var(--ws-b-default)] bg-[var(--ws-bg-input)] px-5 py-4 text-[14px] leading-8 text-[var(--ws-t-primary)]"
                     }
                   >
                     {message.contentText}
@@ -408,26 +569,26 @@ export function LandingPageChatEditor({
 
               {streamingAssistant ? (
                 <div className="max-w-[88%]">
-                  <div className="mb-2 flex items-center gap-2 text-[11px] text-[#6f8199]">
-                    <span className="font-semibold text-[#9baabf]">Innova</span>
+                  <div className="mb-2 flex items-center gap-2 text-[11px] text-[var(--ws-t-muted)]">
+                    <span className="font-semibold text-[var(--ws-t-secondary)]">Innova</span>
                     <span>now</span>
                   </div>
-                  <div className="rounded-2xl border border-white/10 bg-[#0d1727] px-5 py-4">
-                    <div className="mb-2 text-[13px] font-semibold text-[#eae5dc]">
+                  <div className="rounded-[var(--ws-r-lg)] border border-[color:var(--ws-b-subtle)] bg-[var(--ws-bg-card)] px-3 py-3">
+                    <div className="mb-2 text-[12px] font-semibold text-[var(--ws-t-primary)]">
                       {streamingAssistant.statusTitle ?? "Innova is refining the page"}
                     </div>
                     {streamingAssistant.statusBody ? (
-                      <div className="mb-3 text-[11.5px] leading-6 text-[#7f92aa]">
+                      <div className="mb-3 text-[11px] leading-5 text-[var(--ws-t-tertiary)]">
                         {streamingAssistant.statusBody}
                       </div>
                     ) : null}
                     {streamingAssistant.text ? (
-                      <div className="text-[14px] leading-8 text-[#eae5dc]">
+                      <div className="text-[12px] leading-5 text-[var(--ws-t-primary)]">
                         {streamingAssistant.text}
                       </div>
                     ) : (
-                      <div className="flex items-center gap-2 text-[12px] text-[#7f92aa]">
-                        <span className="h-2 w-2 rounded-full bg-[#b08a28] animate-pulse" />
+                      <div className="flex items-center gap-2 text-[12px] text-[var(--ws-t-tertiary)]">
+                        <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--ws-gold)]" />
                         Preparing the next draft revision
                       </div>
                     )}
@@ -438,79 +599,150 @@ export function LandingPageChatEditor({
           )}
         </div>
 
-        <div className="border-t border-white/7 px-5 py-4">
-          {revisionNotice ? (
-            <div className="mb-3 rounded-xl border border-[#2d7a5840] bg-[#2d7a5812] px-4 py-3 text-[11.5px] leading-6 text-[#d6f0e4]">
-              <div className="font-semibold text-[#9ad0b7]">{revisionNotice.title}</div>
+        <div className={canvasMode ? "shrink-0 border-t border-t-[color:var(--ws-b-subtle)] bg-[var(--ws-bg-surface)] px-3 py-3" : "border-t border-t-[color:var(--ws-b-subtle)] px-5 py-4"}>
+          {!canvasMode && revisionNotice ? (
+            <div className="mb-3 rounded-xl border border-[color:var(--ws-green-bdr)] bg-[var(--ws-green-sub)] px-4 py-3 text-[11.5px] leading-6 text-[var(--ws-t-primary)]">
+              <div className="font-semibold text-[var(--ws-green-bright)]">{revisionNotice.title}</div>
               <div className="mt-1">{revisionNotice.body}</div>
             </div>
           ) : null}
           {errorMessage ? (
-            <div className="mb-3 rounded-xl border border-[#9b3a3a44] bg-[#9b3a3a12] px-4 py-3 text-[11.5px] leading-6 text-[#f1bcbc]">
+            <div className="mb-3 rounded-xl border border-[color:var(--ws-red-bdr)] bg-[var(--ws-red-sub)] px-4 py-3 text-[11.5px] leading-6 text-[var(--ws-red-bright)]">
               {errorMessage}
             </div>
           ) : null}
 
           <form onSubmit={handleSubmit}>
-            <div className="rounded-[22px] border border-white/8 bg-[#0b1423] px-4 py-3 shadow-[0_-8px_24px_rgba(2,6,14,0.08)]">
+            <div className={canvasMode ? "rounded-[var(--ws-r-xl)] border border-[color:var(--ws-b-default)] bg-[var(--ws-bg-input)] px-3.5 py-3" : "rounded-[22px] border border-[color:var(--ws-b-default)] bg-[var(--ws-bg-input)] px-4 py-3 shadow-[0_-8px_24px_rgba(2,6,14,0.08)]"}>
               <div className="flex items-end gap-2">
                 <textarea
                   ref={textareaRef}
                   name="message"
                   required
                   minLength={8}
-                  rows={1}
-                  placeholder="Tell Innova how to change the page. Example: Shift the palette to midnight blue and gold, tighten the hero, and add a FAQ section."
-                  className="min-h-[22px] max-h-[132px] flex-1 resize-none bg-transparent text-[14px] leading-7 text-[#eae5dc] outline-none placeholder:text-[#607089]"
+                  rows={canvasMode ? 3 : 1}
+                  placeholder={canvasMode ? "Tell Innova what to change..." : "Tell Innova how to change the page. Example: Shift the palette to midnight blue and gold, tighten the hero, and add a FAQ section."}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" || event.shiftKey) {
+                      return;
+                    }
+
+                    event.preventDefault();
+                    event.currentTarget.form?.requestSubmit();
+                  }}
+                  className={canvasMode ? "min-h-[58px] max-h-[132px] flex-1 resize-none bg-transparent text-[13px] leading-6 text-[var(--ws-t-primary)] outline-none placeholder:text-[var(--ws-t-muted)]" : "min-h-[22px] max-h-[132px] flex-1 resize-none bg-transparent text-[14px] leading-7 text-[var(--ws-t-primary)] outline-none placeholder:text-[var(--ws-t-muted)]"}
                 />
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="flex h-9 min-w-[106px] items-center justify-center gap-2 rounded-full bg-[#b08a28] px-3.5 text-[11.5px] font-semibold text-[#06100f] transition hover:bg-[#ccaa4a] disabled:cursor-not-allowed disabled:opacity-70"
+                  className={canvasMode ? "flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--ws-r-lg)] bg-[var(--ws-gold)] text-[var(--ws-bg-base)] transition hover:bg-[var(--ws-gold-bright)] disabled:cursor-not-allowed disabled:opacity-70" : "flex h-9 min-w-[106px] items-center justify-center gap-2 rounded-full bg-[var(--ws-gold)] px-3.5 text-[11.5px] font-semibold text-[var(--ws-bg-base)] transition hover:bg-[var(--ws-gold-bright)] disabled:cursor-not-allowed disabled:opacity-70"}
                 >
-                  {isSubmitting ? (
+                  {isSubmitting && !canvasMode ? (
                     <>
                       <SpinnerIcon />
                       Editing...
                     </>
+                  ) : isSubmitting ? (
+                    <SpinnerIcon />
                   ) : (
                     <>
-                      Send
+                      {!canvasMode ? "Send" : null}
                       <SendIcon />
                     </>
                   )}
                 </button>
               </div>
-              <div className="mt-2 flex items-center justify-between gap-3 px-1 text-[10.5px] text-[#5e7088]">
-                <span>Innova drafts a new landing-page revision for review. The live page is not changed directly.</span>
-                <span className="shrink-0">{isSubmitting ? "Working..." : "Enter to send"}</span>
+              <div className={canvasMode ? "mt-2 text-right text-[9.5px] leading-4 text-[var(--ws-t-muted)]" : "mt-2 flex items-center justify-between gap-3 px-1 text-[10.5px] text-[var(--ws-t-tertiary)]"}>
+                {!canvasMode ? (
+                  <span>Innova drafts a new landing-page revision for review. The live page is not changed directly.</span>
+                ) : null}
+                {!canvasMode ? (
+                  <span className="shrink-0">{isSubmitting ? "Working..." : "Enter to send"}</span>
+                ) : (
+                  <span>Enter to send - Shift+Enter for newline</span>
+                )}
               </div>
             </div>
           </form>
         </div>
       </section>
 
-      <section className="space-y-4">
-        <div className="rounded-2xl border border-white/10 bg-[#111e30] p-5">
+      <section className={canvasMode ? "flex min-h-0 flex-col overflow-hidden bg-[var(--ws-bg-base)]" : "space-y-4"}>
+        <div
+          className={
+            canvasMode
+              ? "flex h-9 shrink-0 items-center gap-2 border-b border-b-[color:var(--ws-b-subtle)] bg-[var(--ws-bg-surface)] px-3.5"
+              : "rounded-2xl border border-[color:var(--ws-b-default)] bg-[var(--ws-bg-panel)] p-5"
+          }
+        >
           <div className="flex flex-wrap items-center gap-2">
             <AssetStatusBadge tone={asset.statusTone}>{asset.statusLabel}</AssetStatusBadge>
-            <span className="rounded-full border border-white/10 px-3 py-1 text-[11px] text-[#9baabf]">
+            <span className="rounded-full border border-[color:var(--ws-b-default)] px-3 py-1 text-[11px] text-[var(--ws-t-secondary)]">
               {asset.typeLabel}
             </span>
-            <span className="rounded-full border border-white/10 px-3 py-1 text-[11px] text-[#9baabf]">
+            <span className="rounded-full border border-[color:var(--ws-b-default)] px-3 py-1 text-[11px] text-[var(--ws-t-secondary)]">
               {asset.meta}
             </span>
           </div>
-          <div className="mt-4 text-[18px] font-semibold text-[#eae5dc]">
-            {asset.previewTitle}
-          </div>
-          <p className="mt-3 text-[12px] leading-7 text-[#9baabf]">
-            Each successful turn creates a new governed landing-page revision. Review the preview here, then move into approvals when the page is ready.
-          </p>
+          {canvasMode ? (
+            <>
+              <span
+                className={`ml-auto rounded-[var(--ws-r-xs)] border px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-[.06em] ${
+                  hasUnsavedChanges
+                    ? "border-[color:var(--ws-gold-bdr)] bg-[var(--ws-gold-sub)] text-[var(--ws-gold-bright)]"
+                    : "border-[color:var(--ws-green-bdr)] bg-[var(--ws-green-sub)] text-[var(--ws-green-bright)]"
+                }`}
+              >
+                {hasUnsavedChanges ? "Unsaved changes" : previewStatusLabel}
+              </span>
+              <button
+                type="button"
+                onClick={handleUndoDraft}
+                disabled={saveState === "undoing"}
+                className="rounded-[var(--ws-r-xs)] border border-[color:var(--ws-b-subtle)] bg-[var(--ws-bg-card)] px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-[.06em] text-[var(--ws-t-tertiary)] transition hover:border-[color:var(--ws-b-default)] hover:text-[var(--ws-t-primary)] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {saveState === "undoing" ? "Undoing" : "Undo"}
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveDraft}
+                disabled={!hasUnsavedChanges || saveState === "saving"}
+                className="rounded-[var(--ws-r-xs)] border border-[color:var(--ws-gold-bdr)] bg-[var(--ws-gold-sub)] px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-[.06em] text-[var(--ws-gold-bright)] transition hover:bg-[var(--ws-bg-card)] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {saveState === "saving" ? "Saving" : saveState === "saved" ? "Saved" : "Save draft"}
+              </button>
+              <span className="rounded-[var(--ws-r-xs)] border border-[color:var(--ws-green-bdr)] bg-[var(--ws-green-sub)] px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-[.06em] text-[var(--ws-green-bright)]">
+                {previewStatusLabel}
+              </span>
+            </>
+          ) : (
+            <>
+              <div className="mt-4 text-[18px] font-semibold text-[var(--ws-t-primary)]">
+                {asset.previewTitle}
+              </div>
+              <p className="mt-3 text-[12px] leading-7 text-[var(--ws-t-secondary)]">
+                Each successful turn creates a new governed landing-page revision. Review the preview here, then move into approvals when the page is ready.
+              </p>
+            </>
+          )}
         </div>
 
-        <AssetDraftPreview asset={asset} />
+        <div className={canvasMode ? "flex-1 overflow-y-auto p-4" : ""}>
+          {canvasMode ? (
+            <LandingPageDraftPreview
+              payload={draftPayload}
+              editable={{
+                enabled: true,
+                onSectionFieldChange: handleSectionFieldChange,
+                onTitleChange: handleTitleChange,
+              }}
+            />
+          ) : (
+            <AssetDraftPreview asset={asset} />
+          )}
+        </div>
       </section>
+      {publishPanel}
     </div>
   );
 }
@@ -545,6 +777,77 @@ function isLandingPageEditorMessage(value: unknown, assetKey: string) {
   );
 }
 
+function resolvePreviewUrl(asset: DerivedAsset) {
+  if (
+    asset.artifactPayload &&
+    typeof asset.artifactPayload === "object" &&
+    !Array.isArray(asset.artifactPayload)
+  ) {
+    const payload = asset.artifactPayload as Record<string, unknown>;
+    return typeof payload.previewUrl === "string" && payload.previewUrl.trim().length > 0
+      ? payload.previewUrl
+      : null;
+  }
+
+  return null;
+}
+
+function getLandingPagePayload(asset: DerivedAsset) {
+  if (
+    asset.artifactPayload &&
+    typeof asset.artifactPayload === "object" &&
+    !Array.isArray(asset.artifactPayload)
+  ) {
+    return structuredClone(asset.artifactPayload as Record<string, unknown>);
+  }
+
+  return {
+    title: asset.previewTitle,
+    sections: [],
+  };
+}
+
+function updateLandingPageSection(
+  payload: Record<string, unknown>,
+  sectionKey: string,
+  field: "headline" | "subheadline" | "body" | "ctaLabel",
+  value: string,
+) {
+  const existingSections = Array.isArray(payload.sections)
+    ? payload.sections.filter(
+        (section): section is Record<string, unknown> =>
+          typeof section === "object" && section !== null && !Array.isArray(section),
+      )
+    : [];
+
+  const normalizedSectionKey = sectionKey.trim().length > 0 ? sectionKey.trim() : "section";
+  const existingIndex = existingSections.findIndex(
+    (section) =>
+      typeof section.sectionKey === "string" &&
+      section.sectionKey.toLowerCase() === normalizedSectionKey.toLowerCase(),
+  );
+  const nextSections = [...existingSections];
+
+  if (existingIndex === -1) {
+    nextSections.push({
+      sectionKey: normalizedSectionKey,
+      displayOrder: nextSections.length + 1,
+      [field]: value,
+    });
+  } else {
+    nextSections[existingIndex] = {
+      ...nextSections[existingIndex],
+      [field]: value,
+    };
+  }
+
+  return {
+    ...payload,
+    sections: nextSections,
+    revisionSummary: "Manual inline edits saved from the page editor.",
+  };
+}
+
 function formatTimestamp(value: string) {
   return new Intl.DateTimeFormat("en-SG", {
     day: "numeric",
@@ -569,6 +872,25 @@ function SendIcon() {
     >
       <path d="M14 2 1 7l5 3 2 5 6-13Z" />
       <path d="m6 10 3-3" />
+    </svg>
+  );
+}
+
+function RevisionCheckIcon() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="mt-0.5 shrink-0 text-[var(--ws-green-bright)]"
+      aria-hidden
+    >
+      <path d="M13.5 4.5 6.5 11.5 3 8" />
     </svg>
   );
 }

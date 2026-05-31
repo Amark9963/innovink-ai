@@ -1,5 +1,14 @@
 type LandingPageDraftPreviewProps = {
   payload: Record<string, unknown>;
+  editable?: {
+    enabled: boolean;
+    onSectionFieldChange: (
+      sectionKey: string,
+      field: "headline" | "subheadline" | "body" | "ctaLabel",
+      value: string,
+    ) => void;
+    onTitleChange: (value: string) => void;
+  };
 };
 
 type DraftSection = {
@@ -45,6 +54,7 @@ const DEFAULT_THEME: DraftTheme = {
 
 export function LandingPageDraftPreview({
   payload,
+  editable,
 }: LandingPageDraftPreviewProps) {
   const draftTitle = readString(payload, ["title"]) ?? "Landing Page Draft";
   const sections = getSections(payload);
@@ -82,6 +92,8 @@ export function LandingPageDraftPreview({
   ]);
   const faqItems = buildFaqItems(faq);
   const ctaLabel = cta?.ctaLabel ?? hero?.ctaLabel ?? "Register interest";
+  const isEditable = editable?.enabled === true;
+  const ctaTargetSection = cta?.sectionKey ?? hero?.sectionKey ?? "cta";
 
   return (
     <div
@@ -102,21 +114,30 @@ export function LandingPageDraftPreview({
           INNOVINK
         </div>
         <div className="h-4 w-px bg-white/10" />
-        <div className="truncate text-[12px]" style={{ color: "#9baabf" }}>
-          {draftTitle}
-        </div>
+        <EditableText
+          as="div"
+          value={draftTitle}
+          enabled={isEditable}
+          className="truncate text-[12px]"
+          style={{ color: "#9baabf" }}
+          onCommit={editable?.onTitleChange}
+        />
         <div className="ml-auto flex items-center gap-3 text-[11px]" style={{ color: "#9baabf" }}>
           <span>About</span>
           <span>FAQ</span>
-          <span
+          <EditableText
+            as="span"
+            value={ctaLabel}
+            enabled={isEditable}
             className="rounded-full px-3 py-1.5 font-semibold"
             style={{
               background: theme.accentColor,
               color: theme.ctaTextColor,
             }}
-          >
-            {ctaLabel}
-          </span>
+            onCommit={(value) =>
+              editable?.onSectionFieldChange(ctaTargetSection, "ctaLabel", value)
+            }
+          />
         </div>
       </div>
 
@@ -137,22 +158,39 @@ export function LandingPageDraftPreview({
         >
           {heroBadge}
         </div>
-        <h2 className="max-w-[760px] text-[30px] font-semibold leading-[1.18] tracking-[-0.03em] md:text-[38px]">
-          {heroTitle}
-        </h2>
-        <p className="mt-4 max-w-[640px] text-[14px] leading-7" style={{ color: withAlpha(theme.heroForeground, 0.72) }}>
-          {heroSubtitle}
-        </p>
+        <EditableText
+          as="h2"
+          value={heroTitle}
+          enabled={isEditable}
+          className="max-w-[760px] text-[30px] font-semibold leading-[1.18] tracking-[-0.03em] md:text-[38px]"
+          onCommit={(value) =>
+            editable?.onSectionFieldChange(hero?.sectionKey ?? "hero", "headline", value)
+          }
+        />
+        <EditableText
+          as="p"
+          value={heroSubtitle}
+          enabled={isEditable}
+          className="mt-4 max-w-[640px] text-[14px] leading-7"
+          style={{ color: withAlpha(theme.heroForeground, 0.72) }}
+          onCommit={(value) =>
+            editable?.onSectionFieldChange(hero?.sectionKey ?? "hero", "subheadline", value)
+          }
+        />
         <div className="mt-7 flex flex-wrap items-center gap-3">
-          <span
+          <EditableText
+            as="span"
+            value={ctaLabel}
+            enabled={isEditable}
             className="rounded-full px-5 py-3 text-[12px] font-semibold"
             style={{
               background: theme.accentColor,
               color: theme.ctaTextColor,
             }}
-          >
-            {ctaLabel}
-          </span>
+            onCommit={(value) =>
+              editable?.onSectionFieldChange(ctaTargetSection, "ctaLabel", value)
+            }
+          />
           <span
             className="rounded-full border px-5 py-3 text-[12px] font-medium"
             style={{
@@ -167,7 +205,14 @@ export function LandingPageDraftPreview({
       </section>
 
       <div className="space-y-4 px-5 py-5 md:px-6 md:py-6">
-        <SectionSurface theme={theme} title={overview?.headline ?? "Overview"}>
+        <SectionSurface
+          theme={theme}
+          title={overview?.headline ?? "Overview"}
+          editable={isEditable}
+          onTitleCommit={(value) =>
+            editable?.onSectionFieldChange(overview?.sectionKey ?? "overview", "headline", value)
+          }
+        >
           <div className="grid gap-3 md:grid-cols-3">
             {overviewCards.map((card) => (
               <div
@@ -189,7 +234,14 @@ export function LandingPageDraftPreview({
           </div>
         </SectionSurface>
 
-        <SectionSurface theme={theme} title={timeline?.headline ?? "Timeline"}>
+        <SectionSurface
+          theme={theme}
+          title={timeline?.headline ?? "Timeline"}
+          editable={isEditable}
+          onTitleCommit={(value) =>
+            editable?.onSectionFieldChange(timeline?.sectionKey ?? "timeline", "headline", value)
+          }
+        >
           <div className="space-y-3">
             {timelineItems.map((item, index) => (
               <div key={`${item}-${index}`} className="flex gap-3">
@@ -206,7 +258,18 @@ export function LandingPageDraftPreview({
         </SectionSurface>
 
         <div className="grid gap-4 md:grid-cols-2">
-          <SectionSurface theme={theme} title={eligibility?.headline ?? "Eligibility"}>
+          <SectionSurface
+            theme={theme}
+            title={eligibility?.headline ?? "Eligibility"}
+            editable={isEditable}
+            onTitleCommit={(value) =>
+              editable?.onSectionFieldChange(
+                eligibility?.sectionKey ?? "eligibility",
+                "headline",
+                value,
+              )
+            }
+          >
             <ul className="space-y-2">
               {eligibilityItems.map((item, index) => (
                 <li
@@ -219,7 +282,14 @@ export function LandingPageDraftPreview({
               ))}
             </ul>
           </SectionSurface>
-          <SectionSurface theme={theme} title={judging?.headline ?? "Judging"}>
+          <SectionSurface
+            theme={theme}
+            title={judging?.headline ?? "Judging"}
+            editable={isEditable}
+            onTitleCommit={(value) =>
+              editable?.onSectionFieldChange(judging?.sectionKey ?? "judging", "headline", value)
+            }
+          >
             <ul className="space-y-2">
               {judgingItems.map((item, index) => (
                 <li
@@ -235,7 +305,14 @@ export function LandingPageDraftPreview({
         </div>
 
         {faqItems.length > 0 ? (
-          <SectionSurface theme={theme} title={faq?.headline ?? "Frequently Asked Questions"}>
+          <SectionSurface
+            theme={theme}
+            title={faq?.headline ?? "Frequently Asked Questions"}
+            editable={isEditable}
+            onTitleCommit={(value) =>
+              editable?.onSectionFieldChange(faq?.sectionKey ?? "faq", "headline", value)
+            }
+          >
             <div className="space-y-3">
               {faqItems.map((entry) => (
                 <div
@@ -265,16 +342,39 @@ export function LandingPageDraftPreview({
             border: `1px solid ${theme.borderColor}`,
           }}
         >
-          <div className="text-[19px] font-semibold" style={{ color: theme.headingColor }}>
-            {cta?.headline ?? "Ready to participate?"}
-          </div>
-          <div className="mx-auto mt-3 max-w-[640px] text-[13px] leading-7" style={{ color: theme.bodyColor }}>
-            {cta?.body ??
-              "Move into the registration flow, confirm your team details, and continue through the governed participant journey."}
-          </div>
-          <div className="mt-5 inline-flex rounded-full px-5 py-3 text-[12px] font-semibold" style={{ background: theme.accentColor, color: theme.ctaTextColor }}>
-            {ctaLabel}
-          </div>
+          <EditableText
+            as="div"
+            value={cta?.headline ?? "Ready to participate?"}
+            enabled={isEditable}
+            className="text-[19px] font-semibold"
+            style={{ color: theme.headingColor }}
+            onCommit={(value) =>
+              editable?.onSectionFieldChange(cta?.sectionKey ?? "cta", "headline", value)
+            }
+          />
+          <EditableText
+            as="div"
+            value={
+              cta?.body ??
+              "Move into the registration flow, confirm your team details, and continue through the governed participant journey."
+            }
+            enabled={isEditable}
+            className="mx-auto mt-3 max-w-[640px] text-[13px] leading-7"
+            style={{ color: theme.bodyColor }}
+            onCommit={(value) =>
+              editable?.onSectionFieldChange(cta?.sectionKey ?? "cta", "body", value)
+            }
+          />
+          <EditableText
+            as="div"
+            value={ctaLabel}
+            enabled={isEditable}
+            className="mt-5 inline-flex rounded-full px-5 py-3 text-[12px] font-semibold"
+            style={{ background: theme.accentColor, color: theme.ctaTextColor }}
+            onCommit={(value) =>
+              editable?.onSectionFieldChange(ctaTargetSection, "ctaLabel", value)
+            }
+          />
         </section>
       </div>
     </div>
@@ -284,10 +384,14 @@ export function LandingPageDraftPreview({
 function SectionSurface({
   theme,
   title,
+  editable = false,
+  onTitleCommit,
   children,
 }: {
   theme: DraftTheme;
   title: string;
+  editable?: boolean;
+  onTitleCommit?: (value: string) => void;
   children: ReactNode;
 }) {
   return (
@@ -298,11 +402,66 @@ function SectionSurface({
         borderColor: theme.borderColor,
       }}
     >
-      <div className="mb-4 text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: theme.mutedTextColor }}>
-        {title}
-      </div>
+      <EditableText
+        as="div"
+        value={title}
+        enabled={editable}
+        className="mb-4 text-[11px] font-semibold uppercase tracking-[0.12em]"
+        style={{ color: theme.mutedTextColor }}
+        onCommit={onTitleCommit}
+      />
       {children}
     </section>
+  );
+}
+
+function EditableText({
+  as,
+  value,
+  enabled,
+  className,
+  style,
+  onCommit,
+}: {
+  as: "div" | "h2" | "p" | "span";
+  value: string;
+  enabled: boolean;
+  className?: string;
+  style?: CSSProperties;
+  onCommit?: (value: string) => void;
+}) {
+  const Component = as;
+  const editableClass = enabled
+    ? "cursor-text rounded-[10px] outline outline-1 outline-transparent transition hover:outline-[rgba(16,26,42,0.24)] focus:outline-[rgba(176,138,40,0.75)]"
+    : "";
+
+  return (
+    <Component
+      contentEditable={enabled}
+      suppressContentEditableWarning
+      className={`${className ?? ""} ${editableClass}`.trim()}
+      style={style}
+      onBlur={(event) => {
+        if (!enabled || !onCommit) {
+          return;
+        }
+
+        const nextValue = event.currentTarget.textContent?.trim() ?? "";
+        if (nextValue.length > 0 && nextValue !== value) {
+          onCommit(nextValue);
+        }
+      }}
+      onKeyDown={(event) => {
+        if (!enabled || event.key !== "Enter") {
+          return;
+        }
+
+        event.preventDefault();
+        event.currentTarget.blur();
+      }}
+    >
+      {value}
+    </Component>
   );
 }
 
@@ -489,4 +648,4 @@ function withAlpha(color: string, alpha: number) {
 
   return color;
 }
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";

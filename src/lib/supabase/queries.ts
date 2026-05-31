@@ -1129,6 +1129,7 @@ export type AgentSessionSummary = {
   workspaceId: string;
   title: string | null;
   status: Database["public"]["Enums"]["agent_session_status"];
+  sessionMetadata: Database["public"]["Tables"]["agent_sessions"]["Row"]["session_metadata"];
   lastMessageAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -1448,7 +1449,7 @@ export async function getAgentCreateWorkspaceData(
 
   const { data: sessions, error: sessionsError } = await supabase
     .from("agent_sessions")
-    .select("id, brief_id, workspace_id, title, status, last_message_at, created_at, updated_at")
+    .select("id, brief_id, workspace_id, title, status, session_metadata, last_message_at, created_at, updated_at")
     .eq("created_by", user.id)
     .order("updated_at", { ascending: false })
     .limit(16);
@@ -1463,6 +1464,7 @@ export async function getAgentCreateWorkspaceData(
     workspaceId: session.workspace_id,
     title: session.title,
     status: session.status,
+    sessionMetadata: session.session_metadata,
     lastMessageAt: session.last_message_at,
     createdAt: session.created_at,
     updatedAt: session.updated_at,
@@ -1477,7 +1479,7 @@ export async function getAgentCreateWorkspaceData(
   if (!activeSession && options?.sessionId) {
     const { data: explicitSession, error: explicitSessionError } = await supabase
       .from("agent_sessions")
-      .select("id, brief_id, workspace_id, title, status, last_message_at, created_at, updated_at")
+      .select("id, brief_id, workspace_id, title, status, session_metadata, last_message_at, created_at, updated_at")
       .eq("id", options.sessionId)
       .eq("created_by", user.id)
       .maybeSingle();
@@ -1493,6 +1495,7 @@ export async function getAgentCreateWorkspaceData(
         workspaceId: explicitSession.workspace_id,
         title: explicitSession.title,
         status: explicitSession.status,
+        sessionMetadata: explicitSession.session_metadata,
         lastMessageAt: explicitSession.last_message_at,
         createdAt: explicitSession.created_at,
         updatedAt: explicitSession.updated_at,

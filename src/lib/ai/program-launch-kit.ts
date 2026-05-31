@@ -46,6 +46,38 @@ function slugifyKey(value: string) {
     .slice(0, 60);
 }
 
+// Pre-defined palette presets — used when PM picks a style or no colors are set.
+const PALETTE_PRESETS: Record<string, Record<string, string>> = {
+  "navy-gold": {
+    heroBackground: "linear-gradient(135deg, #07101f 0%, #0c1525 50%, #111e30 100%)",
+    accentColor: "#b08a28",
+    ctaTextColor: "#07101f",
+    secondaryButtonTextColor: "#d4bf86",
+    secondaryButtonBorderColor: "rgba(212, 191, 134, 0.45)",
+  },
+  "corporate-blue": {
+    heroBackground: "linear-gradient(135deg, #0a1628 0%, #12253f 50%, #1a3357 100%)",
+    accentColor: "#2d6caa",
+    ctaTextColor: "#ffffff",
+    secondaryButtonTextColor: "#90b8d8",
+    secondaryButtonBorderColor: "rgba(144, 184, 216, 0.40)",
+  },
+  "dark-purple": {
+    heroBackground: "linear-gradient(135deg, #0e0818 0%, #1a0f2e 50%, #251645 100%)",
+    accentColor: "#7c3aed",
+    ctaTextColor: "#ffffff",
+    secondaryButtonTextColor: "#c4b5fd",
+    secondaryButtonBorderColor: "rgba(196, 181, 253, 0.40)",
+  },
+  "slate-teal": {
+    heroBackground: "linear-gradient(135deg, #0f1923 0%, #1a2e3a 50%, #1e3d4d 100%)",
+    accentColor: "#0d9488",
+    ctaTextColor: "#ffffff",
+    secondaryButtonTextColor: "#7dd3ca",
+    secondaryButtonBorderColor: "rgba(125, 211, 202, 0.40)",
+  },
+};
+
 function buildLandingPageDraft(
   brief: BriefContext,
   plan: PlanContext | null,
@@ -60,6 +92,23 @@ function buildLandingPageDraft(
   const audience = getStringArrayValue(briefRecord, "targetParticipants").join(", ") || "Program participants";
   const evaluation = getStringValue(briefRecord, "evaluationModel") ?? "A governed evaluation model";
 
+  // Apply brand colors from the brief — fall back to navy-gold preset
+  const brandColors =
+    briefRecord.brandColors &&
+    typeof briefRecord.brandColors === "object" &&
+    !Array.isArray(briefRecord.brandColors)
+      ? (briefRecord.brandColors as Record<string, string>)
+      : null;
+
+  const paletteKey = brandColors?.paletteKey ?? "navy-gold";
+  const preset = PALETTE_PRESETS[paletteKey] ?? PALETTE_PRESETS["navy-gold"];
+
+  const heroBackground = brandColors?.primary
+    ? `linear-gradient(135deg, ${brandColors.primary}ee 0%, ${brandColors.primary}cc 50%, ${brandColors.primary}99 100%)`
+    : preset.heroBackground;
+
+  const accentColor = brandColors?.accent ?? preset.accentColor;
+
   return {
     artifactType: "landing_page",
     title: `${titleBase} Landing Page Draft`,
@@ -69,21 +118,21 @@ function buildLandingPageDraft(
       title: `${titleBase} Landing Page`,
       seoTitle: titleBase,
       seoDescription: objective,
-      themeKey: "enterprise-navy",
+      themeKey: paletteKey,
       theme: {
-        pageBackground: "#f3f1ea",
+        pageBackground: brandColors?.surface ?? "#f3f1ea",
         surfaceBackground: "#ffffff",
-        heroBackground: "linear-gradient(135deg, #07101f 0%, #0c1525 50%, #111e30 100%)",
+        heroBackground,
         heroForeground: "#f4ede2",
         headingColor: "#101a2a",
         bodyColor: "#38485d",
         mutedTextColor: "#70839d",
-        accentColor: "#b08a28",
+        accentColor,
         borderColor: "rgba(16, 26, 42, 0.1)",
-        ctaTextColor: "#07101f",
+        ctaTextColor: preset.ctaTextColor,
         secondaryButtonBackground: "rgba(255,255,255,0.04)",
-        secondaryButtonTextColor: "#d4bf86",
-        secondaryButtonBorderColor: "rgba(212, 191, 134, 0.45)",
+        secondaryButtonTextColor: preset.secondaryButtonTextColor,
+        secondaryButtonBorderColor: preset.secondaryButtonBorderColor,
       },
       sections: [
         {
